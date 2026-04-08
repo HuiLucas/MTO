@@ -57,12 +57,10 @@ namespace mtoCompat
     inline autoPtr<transportModel> NewTransportModel
     (
         const fvMesh& mesh,
-        volVectorField& U,
-        surfaceScalarField& phi
+        volVectorField&,
+        surfaceScalarField&
     )
     {
-        (void)U;
-        (void)phi;
         return transportModel::New(mesh);
     }
 
