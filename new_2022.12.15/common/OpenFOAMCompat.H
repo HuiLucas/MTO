@@ -12,6 +12,16 @@ namespace mtoCompat
     typedef singlePhaseTransportModel transportModel;
     typedef incompressible::turbulenceModel momentumTransportModel;
 
+    inline autoPtr<transportModel> NewTransportModel
+    (
+        const fvMesh&,
+        volVectorField& U,
+        surfaceScalarField& phi
+    )
+    {
+        return autoPtr<transportModel>(new transportModel(U, phi));
+    }
+
     inline autoPtr<momentumTransportModel> NewMomentumTransport
     (
         volVectorField& U,
@@ -44,7 +54,12 @@ namespace mtoCompat
     typedef viscosityModel transportModel;
     typedef incompressible::momentumTransportModel momentumTransportModel;
 
-    inline autoPtr<transportModel> NewTransportModel(const fvMesh& mesh)
+    inline autoPtr<transportModel> NewTransportModel
+    (
+        const fvMesh& mesh,
+        volVectorField&,
+        surfaceScalarField&
+    )
     {
         return transportModel::New(mesh);
     }
