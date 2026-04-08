@@ -49,11 +49,22 @@ label pRefCell = 0;
 scalar pRefValue = 0.0;
 setRefCell(p, simple.dict(), pRefCell, pRefValue);
 mesh.setFluxRequired(p.name());
-singlePhaseTransportModel laminarTransport(U, phi);
-autoPtr<incompressible::turbulenceModel> turbulence
+#if __has_include("singlePhaseTransportModel.H")
+mtoCompat::transportModel laminarTransport(U, phi);
+autoPtr<mtoCompat::momentumTransportModel> turbulence
 (
-    incompressible::turbulenceModel::New(U, phi, laminarTransport)
+    mtoCompat::NewMomentumTransport(U, phi, laminarTransport)
 );
+#else
+autoPtr<mtoCompat::transportModel> laminarTransport
+(
+    mtoCompat::NewTransportModel(mesh)
+);
+autoPtr<mtoCompat::momentumTransportModel> turbulence
+(
+    mtoCompat::NewMomentumTransport(U, phi, laminarTransport())
+);
+#endif
 //****************************************************************//adj-fluid-a
 Info<< "Reading field pa\n" << endl;
 volScalarField pa
