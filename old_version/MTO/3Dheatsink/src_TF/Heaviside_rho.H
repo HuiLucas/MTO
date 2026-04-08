@@ -1,10 +1,10 @@
  Info<< "\n Heaviside_rho\n" << endl;
 
 localr=gamma.internalField();
-AllrList[Pstream::myProcNo()] = localr;
-Pstream::gatherList(AllrList);
-Pstream::scatterList(AllrList);
-Allgamma=ListListOps::combine<scalarField>(AllrList,accessOp<scalarField>());
+AllrList[Foam::Pstream::myProcNo()] = localr;
+Foam::Pstream::gatherList(AllrList);
+Foam::Pstream::scatterList(AllrList);
+Allgamma=Foam::ListListOps::combine<scalarField>(AllrList,Foam::accessOp<scalarField>());
 
 for(i=0;i<nallcells;i++)
 {

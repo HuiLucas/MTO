@@ -47,8 +47,8 @@ volVectorField U
 #include "createPhi.H"
 label pRefCell = 0;
 scalar pRefValue = 0.0;
-setRefCell(p, simple.dict(), pRefCell, pRefValue);
-mesh.setFluxRequired(p.name());
+pRefCell = simple.dict().lookupOrDefault<label>("pRefCell", 0);
+pRefValue = simple.dict().lookupOrDefault<scalar>("pRefValue", 0.0);
 autoPtr<mtoCompat::transportModel> laminarTransport
 (
     mtoCompat::NewTransportModel(mesh, U, phi)
@@ -99,14 +99,8 @@ surfaceScalarField phia
 );
 label paRefCell = 0;
 scalar paRefValue = 0.0;
-setRefCell
-(
-    pa,
-    simple.dict(),
-    paRefCell,
-    paRefValue
-);
-mesh.setFluxRequired(pa.name());
+paRefCell = simple.dict().lookupOrDefault<label>("paRefCell", 0);
+paRefValue = simple.dict().lookupOrDefault<scalar>("paRefValue", 0.0);
 
 
 //*****************************************************//

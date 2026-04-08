@@ -7,19 +7,19 @@ for(i=0;i<40;i++)
       fvm::div(-phi, Ua)
     + adjointTransposeConvectiona
     - fvm::laplacian(nu,Ua)
-    + fvm::Sp(alpha, Ua)
-   ==
-      fvOptions(Ua)
+     + fvm::Sp(alpha, Ua)
+    ==
+      fvModels.source(Ua)
   );
   fvVectorMatrix& UaEqn = tUaEqn.ref();
 
   UaEqn.relax();
 
-  fvOptions.constrain(UaEqn);
+  fvConstraints.constrain(UaEqn);
 
   solve(UaEqn == -fvc::grad(pa));
 
-  fvOptions.correct(Ua);
+  fvConstraints.constrain(Ua);
 //****************************************
   volScalarField rAUa(1.0/UaEqn.A());
   volVectorField HbyAa("HbyAa", Ua);
@@ -67,7 +67,7 @@ for(i=0;i<40;i++)
   // Adjoint momentum corrector
   Ua = HbyAa - rAUa*fvc::grad(pa);
   Ua.correctBoundaryConditions();
-  fvOptions.correct(Ua);
+  fvConstraints.constrain(Ua);
   
   Ua.storePrevIter();
   pa.storePrevIter();

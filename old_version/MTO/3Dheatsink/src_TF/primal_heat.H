@@ -4,10 +4,10 @@ Info<< "\nslove pri-heat\n" << endl;
           fvm::div(phi,T)
          -fvm::laplacian(DT, T)
        ==
-          fvOptions(T)+Q
+          MTO_FV_SOURCE(T)+Q
       );
       TEqn.relax();
-      fvOptions.constrain(TEqn);
+      MTO_FV_CONSTRAIN(TEqn);
       TEqn.solve();
-      fvOptions.correct(T);
+      MTO_FV_CORRECT(T);
 

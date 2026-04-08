@@ -44,5 +44,5 @@ timeFormat      general;
 timePrecision   12;
 
 runTimeModifiable true;
-libs ( "libOpenFOAM.so" "libgroovyBC.so" ) ;
+libs ( "libOpenFOAM.so" ) ;
 // ************************************************************************* //

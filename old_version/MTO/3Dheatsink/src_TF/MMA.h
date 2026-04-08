@@ -1,121 +1,67 @@
-#ifndef __MMA__
-#define __MMA__
+#ifndef MMA_H
+#define MMA_H
 
-#include <petsc.h>
+#include "mpi.h"
+#include <vector>
+#include <cmath>
+// #include "fvCFD.H"
+
+class MMA {
+
+  public:
+	MMA(int NvarLocal, int m);
+
+  void MMAsolver(std::vector<double> &xval,
+                 std::vector<double> &dfdx,
+                 std::vector<double> &g,
+                 std::vector<std::vector<double>> &dgdx);
+                 
+public:
+  int n;// number of design variables
+  int m;// number of constraints
+  int iter;//iteration
+
+  // some parameters set by user
+  double raa0=1.0e-5;
+  double asyminit=0.5;
+  double asymdec=0.7;
+  double asyminc=1.2;
+  double albefa=0.1;
+  double epsimin;
+  double xmamieps=1.0e-5;
+  double movelimit=0.5;
+  double RobustAsymptotesType=0;
+  std::vector<double> a,c;
+
+  private:
+	std::vector<double> y;
+	double z;
+	std::vector<double> lam, mu, s;
+	std::vector<double>  alpha, beta, p0, q0, pij, qij, b, grad, hess;
+
+  std::vector<double> xmax, xmin, low, upp, xold1, xold2;
 
 
-/* 
-Copyright (C) 2013-2019, Niels Aage
-*/
-class MMA{
- public:
 
-  // Construct using defaults subproblem penalization
-  MMA(PetscInt n, PetscInt m, Vec x);
-  // User defined subproblem penalization
-  MMA(PetscInt n, PetscInt m, Vec x, PetscScalar *a,PetscScalar *c, PetscScalar *d,double init,double dec,double inc);
-  // Initialize with restart from itr
-  MMA(PetscInt n, PetscInt m, PetscInt itr, Vec xo1,Vec xo2,Vec U,Vec L);
-  // Initialize with restart and specify subproblem parameters
-  MMA(PetscInt n, PetscInt m, PetscInt itr, Vec xo1,Vec xo2,Vec U,Vec L, PetscScalar *a,PetscScalar *c, PetscScalar *d);
-  // Destructor
-  ~MMA();
+private:
+  void Update(std::vector<double> &xval,
+              std::vector<double> &dfdx,
+              std::vector<double> &g,
+              std::vector<std::vector<double>> &dgdx);
 
-  // Set and solve a subproblem: return new xval
-  PetscErrorCode Update(Vec xval, Vec dfdx, PetscScalar *gx, Vec *dgdx, Vec xmin, Vec xmax,PetscScalar raa0,double dec,double inc);
+  void GenSub(std::vector<double> &xval, std::vector<double> &dfdx,
+               std::vector<double> &g, std::vector<std::vector<double>> &dgdx);
 
-  // Return necessary data for possible restart
-  PetscErrorCode Restart(Vec xo1,Vec xo2,Vec U,Vec L);
+	void SolveDIP(std::vector<double> &x);
 
-  // Set the aggresivity of the moving asymptotes
-  PetscErrorCode SetAsymptotes(PetscScalar init, PetscScalar decrease, PetscScalar increase);
+	void XYZofLAMBDA(std::vector<double> &x);
 
-  // do/don't add convexity approx to constraints: default=false
-  PetscErrorCode ConstraintModification(PetscBool conMod){constraintModification = conMod; return 0;};
+	void DualGrad(std::vector<double> &x);
+	void DualHess(std::vector<double> &x);
+	void DualLineSearch();
+	double DualResidual(std::vector<double> &x, double epsi);
 
-  // val=0: default, val=1: increase robustness, i.e
-  // control the spacing between L < alp < x < beta < U, 
-  PetscErrorCode SetRobustAsymptotesType(PetscInt val);
-
-  // Sets outer movelimits on all primal design variables
-  // This is often requires to prevent the solver from oscilating
-  PetscErrorCode SetOuterMovelimit(PetscScalar Xmin, PetscScalar Xmax, PetscScalar movelim, Vec x, Vec xmin, Vec xmax);
-
-  // Return KKT residual norms (norm2 and normInf)
-  PetscErrorCode KKTresidual(Vec xval, Vec dfdx, PetscScalar *gx, Vec *dgdx, Vec xmin, Vec xmax, 
-    PetscScalar *norm2, PetscScalar *normInf);
-
-  // Inf norm on diff between two vectors: SHOULD NOT BE HERE - USE BASIC PETSc!!!!!
-  PetscScalar DesignChange(Vec x, Vec xold);
-
- private:
-
-  // Set up the MMA subproblem based on old x's and xval
-  PetscErrorCode GenSub(Vec xval, Vec dfdx, PetscScalar *gx, Vec *dgdx, Vec xmin, Vec xmax,PetscScalar raa0);
-
-  // Interior point solver for the subproblem
-  PetscErrorCode SolveDIP(Vec xval);
-
-  // Compute primal vars based on dual solution
-  PetscErrorCode XYZofLAMBDA(Vec x);
-
-  // Dual gradient
-  PetscErrorCode DualGrad(Vec x);
-
-  // Dual Hessian
-  PetscErrorCode DualHess(Vec x);
-
-  // Dual line search
-  PetscErrorCode DualLineSearch();
-
-  // Dual residual
-  PetscScalar DualResidual(Vec x, PetscScalar epsi);
-
-  // Problem size and iteration counter
-  PetscInt n,m,k;
-
-  // "speed-control" for the asymptotes
-  PetscScalar asyminit,asymdec,asyminc;
-
-  // do/don't add convexity constraint approximation in subproblem
-  PetscBool constraintModification; // default = FALSE
-
-  // Bool specifying if non lin constraints are included or not
-  PetscBool NonLinConstraints;
-
-  // 0: (default) span between alp L x U beta, 
-  // 1: increase the span for further robustness
-  PetscInt RobustAsymptotesType;
-
-  // Local vectors: penalty numbers for subproblem
-  PetscScalar *a, *c, *d;
-
-  // Local vectors: elastic variables
-  PetscScalar *y;
-  PetscScalar z;
-
-  // Local vectors: Lagrange multipliers:
-  PetscScalar *lam,*mu,*s;
-
-  // Global: Asymptotes, bounds, objective approx., constraint approx.
-  Vec L,U,alpha,beta,p0,q0,*pij,*qij;
-
-  // Local: subproblem constant terms, dual gradient, dual hessian
-  PetscScalar *b,*grad,*Hess;
-
-  // Global: Old design variables
-  Vec xo1, xo2;
-
-  // Math helpers
-  PetscErrorCode Factorize(PetscScalar *K, PetscInt nn);
-  PetscErrorCode Solve(PetscScalar *K, PetscScalar *x, PetscInt nn);
-  PetscScalar Min(PetscScalar d1, PetscScalar d2);
-  PetscScalar Max(PetscScalar d1, PetscScalar d2);
-  PetscInt Min(PetscInt d1, PetscInt d2);
-  PetscInt Max(PetscInt d1, PetscInt d2);
-  PetscScalar Abs(PetscScalar d1);
+	static void Factorize(double *K, int n);
+	static void Solve(double *K, double *x, int n);
 };
-
-
 #endif
-

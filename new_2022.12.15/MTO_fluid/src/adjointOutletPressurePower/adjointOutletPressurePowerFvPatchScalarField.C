@@ -131,7 +131,6 @@ void Foam::adjointOutletPressurePowerFvPatchScalarField::updateCoeffs()
 void Foam::adjointOutletPressurePowerFvPatchScalarField::write(Ostream& os) const
 {
     fvPatchScalarField::write(os);
-    writeEntry("value", os);
 }
 
 

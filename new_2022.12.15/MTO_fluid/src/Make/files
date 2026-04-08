@@ -1,5 +1,3 @@
-
-
 adjointOutletPressurePower/adjointOutletPressurePowerFvPatchScalarField.C
 adjointOutletVelocityPower/adjointOutletVelocityPowerFvPatchVectorField.C
 MMA/MMA.C

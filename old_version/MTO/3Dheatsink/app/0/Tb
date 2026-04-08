@@ -27,12 +27,7 @@ boundaryField
     }
     outlet
     {
-       type             groovyBC;
-       variables "k=DT;h=U&normal();Tinf=0;f=1/(1+k/(h*mag(delta())));";
-       valueExpression  "Tinf";
-       gradientExpression "0";
-       fractionExpression "f";
-       value           uniform 0;
+        type            zeroGradient;
     }
     wall
     {

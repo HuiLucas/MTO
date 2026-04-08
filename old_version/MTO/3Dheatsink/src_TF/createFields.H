@@ -29,14 +29,14 @@ volVectorField U
 #include "createPhi.H"
 label pRefCell = 0;
 scalar pRefValue = 0.0;
-setRefCell(p, simple.dict(), pRefCell, pRefValue);
-mesh.setFluxRequired(p.name());
-
-singlePhaseTransportModel laminarTransport(U, phi);
-
-autoPtr<incompressible::turbulenceModel> turbulence
+autoPtr<mtoCompat::transportModel> laminarTransport
 (
-    incompressible::turbulenceModel::New(U, phi, laminarTransport)
+    mtoCompat::NewTransportModel(mesh, U, phi)
+);
+
+autoPtr<mtoCompat::momentumTransportModel> turbulence
+(
+    mtoCompat::NewMomentumTransport(U, phi, laminarTransport())
 );
 //************************************************************************//
 Info<< "Reading field pb\n" << endl;
@@ -82,14 +82,6 @@ surfaceScalarField phib
 
 label pbRefCell = 0;
 scalar pbRefValue = 0.0;
-setRefCell
-(
-    pb,
-    simple.dict(),
-    pbRefCell,
-    pbRefValue
-);
-mesh.setFluxRequired(pb.name());
 //************************************************************************//
 Info<< "Reading field pc\n" << endl;
 volScalarField pc
@@ -133,14 +125,6 @@ surfaceScalarField phic
 );
 label pcRefCell = 0;
 scalar pcRefValue = 0.0;
-setRefCell
-(
-    pc,
-    simple.dict(),
-    pcRefCell,
-    pcRefValue
-);
-mesh.setFluxRequired(pc.name());
 //************************************************************************//property
 Info<< "Reading Material Properties\n" << endl;
     IOdictionary transportProperties
@@ -277,7 +261,8 @@ volScalarField gsens_U
     );  
        
 //
-dictionary Fun1=mesh.solutionDict().subDict("power_dissipation");
+const dictionary& Fun1 =
+    mesh.lookupObject<IOdictionary>("fvSolution").subDict("power_dissipation");
 int nObjPatch=Fun1.lookupOrDefault<scalar>("numberConstraintPatches",2);//number of patch 
 wordList conPatchNames = Fun1.lookup("constraintPatchesNames");//function name
 label conPatchList[nObjPatch];//patch list

@@ -4,9 +4,9 @@ Info<< "\nslove adj-heat-b\n" << endl;
         -fvm::div(-phi,Tb) 
         +fvm::laplacian(DT, Tb)
       ==
-         fvOptions(Tb)+Q
+         MTO_FV_SOURCE(Tb)+Q
      );
      TEqnb.relax();
-     fvOptions.constrain(TEqnb);
+     MTO_FV_CONSTRAIN(TEqnb);
      TEqnb.solve();
-     fvOptions.correct(Tb);
+     MTO_FV_CORRECT(Tb);

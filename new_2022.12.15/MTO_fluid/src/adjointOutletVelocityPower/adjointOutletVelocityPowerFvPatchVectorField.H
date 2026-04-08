@@ -88,7 +88,11 @@ public:
         {
             return tmp<fvPatchVectorField>
             (
-                new adjointOutletVelocityPowerFvPatchVectorField(*this)
+                new adjointOutletVelocityPowerFvPatchVectorField
+                (
+                    *this,
+                    this->internalField()
+                )
             );
         }
 

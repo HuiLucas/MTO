@@ -17,15 +17,15 @@ reduce(PowerDiss, sumOp<scalar>());
 
 if (Pstream::master())
 { 
-   ofstream outfile1("Voluse.txt",std::ios::app);
+   std::ofstream outfile1("Voluse.txt",std::ios::app);
    outfile1<<V<<"\n";
    outfile1.close();
 
-   ofstream outfile2("PowerDiss.txt",std::ios::app);
+   std::ofstream outfile2("PowerDiss.txt",std::ios::app);
    outfile2<<PowerDiss<<"\n";
    outfile2.close(); 
 
-   ofstream outfile4("Time.txt",std::ios::app);
+   std::ofstream outfile4("Time.txt",std::ios::app);
    outfile4<<runTime.elapsedClockTime()<<"\n";
    outfile4.close();    
 

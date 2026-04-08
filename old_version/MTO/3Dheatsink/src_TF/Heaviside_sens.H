@@ -35,8 +35,8 @@ for(i=0;i<allcells;i++)
    scalef=std::max(scalef,mag(fsens[i]));
    scaleg=std::max(scaleg,mag(gsens_U[i]));
 }
-reduce(scalef, maxOp<scalar>()); 
-reduce(scaleg, maxOp<scalar>()); 
+Foam::reduce(scalef, Foam::maxOp<Foam::scalar>());
+Foam::reduce(scaleg, Foam::maxOp<Foam::scalar>());
 
 if(opt>1)
 {

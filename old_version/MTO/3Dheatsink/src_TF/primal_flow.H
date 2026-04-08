@@ -1,25 +1,25 @@
     Info<< "Time = " << runTime.timeName() << nl << endl;
-    MRF.correctBoundaryVelocity(U);
+    // OpenFOAM 11 momentum source compatibility: no boundary velocity correction here.
     tmp<fvVectorMatrix> tUEqn
     (
         fvm::div(phi, U)
       + MRF.DDt(U)
-      + turbulence->divDevReff(U)
+      + mtoCompat::divDevMomentum(turbulence(), U)
       + fvm::Sp(alpha, U)
      ==
-        fvOptions(U)
+        MTO_FV_SOURCE(U)
     );
     fvVectorMatrix& UEqn = tUEqn.ref();
 
     UEqn.relax();
 
-    fvOptions.constrain(UEqn);
+    MTO_FV_CONSTRAIN(UEqn);
 
     if (simple.momentumPredictor())
     {
         solve(UEqn == -fvc::grad(p));
 
-        fvOptions.correct(U);
+        MTO_FV_CORRECT(U);
     }
 //****************************************//
     volScalarField rAU(1.0/UEqn.A());
@@ -69,7 +69,7 @@
     // Momentum corrector
     U = HbyA - rAtU()*fvc::grad(p);
     U.correctBoundaryConditions();
-    fvOptions.correct(U);
+    MTO_FV_CORRECT(U);
     
     U.storePrevIter();
     p.storePrevIter();

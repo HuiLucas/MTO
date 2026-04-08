@@ -28,7 +28,6 @@ License
 #include "fvPatchMapper.H"
 #include "volFields.H"
 #include "surfaceFields.H"
-#include "RASModel.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -131,7 +130,7 @@ void Foam::adjointOutletPressurePowerFvPatchScalarField::updateCoeffs()
 void Foam::adjointOutletPressurePowerFvPatchScalarField::write(Ostream& os) const
 {
     fvPatchScalarField::write(os);
-    writeEntry("value", os);
+    writeEntry(os, "value", *this);
 }
 
 

@@ -136,7 +136,6 @@ void Foam::adjointOutletVelocityPowerFvPatchVectorField::updateCoeffs()
 void Foam::adjointOutletVelocityPowerFvPatchVectorField::write(Ostream& os) const
 {
     fvPatchVectorField::write(os);
-    writeEntry("value", os);
 }
 
 

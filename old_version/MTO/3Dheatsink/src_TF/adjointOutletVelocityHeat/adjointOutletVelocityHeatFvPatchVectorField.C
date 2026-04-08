@@ -28,7 +28,6 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "surfaceFields.H"
 #include "fvPatchFieldMapper.H"
-#include "RASModel.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -136,7 +135,7 @@ void Foam::adjointOutletVelocityHeatFvPatchVectorField::updateCoeffs()
 void Foam::adjointOutletVelocityHeatFvPatchVectorField::write(Ostream& os) const
 {
     fvPatchVectorField::write(os);
-    writeEntry("value", os);
+    writeEntry(os, "value", *this);
 }
 
 

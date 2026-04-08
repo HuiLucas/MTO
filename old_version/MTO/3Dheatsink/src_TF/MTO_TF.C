@@ -22,20 +22,29 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 \*---------------------------------------------------------------------------*/
 
-#include "fvCFD.H"
-#include "singlePhaseTransportModel.H"
-#include "turbulentTransportModel.H"
+#include "fvMesh.H"
+#include "volFields.H"
+#include "surfaceFields.H"
+#include "fvc.H"
+#include "fvm.H"
+#include "zeroGradientFvPatchFields.H"
+#include "argList.H"
+#include "IOMRFZoneList.H"
+#include "adjustPhi.H"
+#include "constrainPressure.H"
+#include "constrainHbyA.H"
+#include "../../../../new_2022.12.15/common/OpenFOAMCompat.H"
 #include "simpleControl.H"
-#include "fvOptions.H"
+#include "fvOptionCompat.H"
 #include <math.h>
 #include <fstream>
 #include <iostream>
 #include <iosfwd>
 #include <stdio.h>
-#include "petsc.h"
-#include "petscvec.h"
-#include <MMA.h>
 #include <mpi.h>
+#include <MMA.h>
+
+using namespace Foam;
 
 template<class Type>
 void setCells
@@ -51,21 +60,23 @@ void setCells
     }
 }
 double fun(double gamma[],double del,double eta,int allcells);
-static char help[] = "topology optimization \n";
 int main(int argc, char *argv[])
 {
-    PetscInitialize(&argc,&argv,PETSC_NULL,help);
-    #include "postProcess.H"
     #include "setRootCase.H"
     #include "createTime.H"
     #include "createMesh.H"
     #include "createControl.H"
-    #include "createFields.H"
-    #include "readThermalProperties.H" 
+    #if __has_include("createFvOptions.H")
     #include "createFvOptions.H"
+    #else
+    #include "createFvModels.H"
+    #include "createFvConstraints.H"
+    #endif
+    #include "createFields.H"
+    #include "readThermalProperties.H"
     #include "initContinuityErrs.H"
     #include "SIMP_initialize.H"
-    while (simple.loop())
+    while (simple.loop(runTime))
     {
         Info<< "Time = " << runTime.timeName() << nl << endl;
         #include "primal_equation.H"
@@ -87,8 +98,6 @@ int main(int argc, char *argv[])
         << "  ClockTime = " << runTime.elapsedClockTime() << " s"
         << nl << endl;
     }
-    delete mma;
-    PetscFinalize();
     Info<< "End\n" << endl;
     return 0;
 }

@@ -7,30 +7,23 @@ gsens_U=-alphaMax*(1+qu)*qu/((qu+gamma)*(qu+gamma))*(U&Uc);
 
 #include "Heaviside_sens.H"
      
-gx[0]=(PetscScalar)(DissPower/Foam::max(D0-opt*0.2,D1)-1.0);
-gx[1]=(PetscScalar)(V);
+gx[0]=(DissPower/Foam::max(D0-opt*0.2,D1)-1.0);
+gx[1]=(V);
 
-VecGetArray(dfdx,&dfdx_array);
-VecGetArrays(dgdx,m,&dgdx_array);
 for(i=0;i<allcells;i++)
 {
-  dfdx_array[i]=fsens[i]/scalef/nallcells;
-  dgdx_array[0][i]=gsens_U[i]/scaleg/nallcells;
-  dgdx_array[1][i]=gsens[i];    
+  dfdx[i]=fsens[i]/scalef/nallcells;
+  dgdx[0][i]=gsens_U[i]/scaleg/nallcells;
+  dgdx[1][i]=gsens[i];
 }
-VecRestoreArray(dfdx,&dfdx_array);
-VecRestoreArrays(dgdx,m,&dgdx_array);
 
 Info<< "\nrun mmasub\n" << endl;
-mma->SetOuterMovelimit(Xmin,Xmax,movlim,xmma,xmin,xmax);
-mma->Update(xmma,dfdx,gx,dgdx,xmin,xmax,raa0,mma_dec,mma_inc);
+mma.MMAsolver(xmma, dfdx, gx, dgdx);
 
-VecGetArray(xmma,&xmma_array);
 for(i=0;i<allcells;i++)
 {
-  gamma[i]=xmma_array[i];
+  gamma[i]=xmma[i];
 }
-VecRestoreArray(xmma,&xmma_array);
 
 #include "Heaviside_rho.H"
 

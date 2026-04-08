@@ -8,17 +8,17 @@
               - fvm::laplacian(nu,Uc)
               + fvm::Sp(alpha, Uc)
              ==
-                fvOptions(Uc)
+                MTO_FV_SOURCE(Uc)
             );
             fvVectorMatrix& UcEqn = tUcEqn.ref();
 
             UcEqn.relax();
 
-            fvOptions.constrain(UcEqn);
+            MTO_FV_CONSTRAIN(UcEqn);
 
             solve(UcEqn == -fvc::grad(pc));
 
-            fvOptions.correct(Uc);
+            MTO_FV_CORRECT(Uc);
 //****************************************
             volScalarField rAUc(1.0/UcEqn.A());
             volVectorField HbyAc("HbyAc", Uc);
@@ -66,7 +66,7 @@
             // Adjoint momentum corrector
             Uc = HbyAc - rAUc*fvc::grad(pc);
             Uc.correctBoundaryConditions();
-            fvOptions.correct(Uc);
+            MTO_FV_CORRECT(Uc);
             
             Uc.storePrevIter();
             pc.storePrevIter();

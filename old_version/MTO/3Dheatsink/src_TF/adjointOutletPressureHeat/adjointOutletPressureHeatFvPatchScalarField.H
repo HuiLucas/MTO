@@ -88,7 +88,11 @@ public:
         {
             return tmp<fvPatchScalarField>
             (
-                new adjointOutletPressureHeatFvPatchScalarField(*this)
+                new adjointOutletPressureHeatFvPatchScalarField
+                (
+                    *this,
+                    this->internalField()
+                )
             );
         }
 

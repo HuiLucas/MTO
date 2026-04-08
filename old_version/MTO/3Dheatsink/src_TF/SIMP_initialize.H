@@ -127,59 +127,28 @@
          }
       }
    }
-//***********************************//Petsc
-PetscInt n_dof,N_dof,m=2;//m:number of constraints
-n_dof=allcells;
-N_dof=nallcells;
+//***********************************//MMA
+int m=2;//m:number of constraints
+MMA mma(allcells,m);
+mma.asyminit = mma_init;
+mma.asymdec = mma_dec;
+mma.asyminc = mma_inc;
+mma.raa0 = raa0;
+mma.movelimit = movlim;
 
-PetscScalar Xmin=0; // Min. value of design variables
-PetscScalar Xmax=1; // Max. value of design variables
+std::vector<double> xmma(allcells);
+std::vector<double> dfdx(allcells);
+std::vector<double> gx(m);
+std::vector<std::vector<double>> dgdx(m);
+for (int ii=0; ii<m; ii++)
+{
+   dgdx[ii].resize(allcells);
+}
 
-Vec xmma,xold,xmin,xmax;
-PetscScalar *xmma_array;
-VecCreate(PETSC_COMM_WORLD,&xmma);
-VecSetSizes(xmma,n_dof,N_dof);
-VecSetFromOptions(xmma);
-VecGetArray(xmma,&xmma_array);
 for(i=0;i<allcells;i++)
 {
-  xmma_array[i]=gamma[i];
+   xmma[i]=gamma[i];
 }
-VecRestoreArray(xmma,&xmma_array);
-
-VecDuplicate(xmma,&xold); 
-VecDuplicate(xmma,&xmin);
-VecDuplicate(xmma,&xmax); 
-
-PetscScalar aMMA[m];
-PetscScalar cMMA[m];
-PetscScalar dMMA[m];
-
-for (PetscInt i=0;i<m;i++)
-{
-  aMMA[i]=0.0;
-  dMMA[i]=1.0;
-  cMMA[i]=1000.0;
-}
-
-MMA *mma;
-mma=new MMA(N_dof,m,xmma, aMMA, cMMA, dMMA,mma_init,mma_dec,mma_inc);
-
-//**********************************************//dfdx
-Vec dfdx; // Sensitivities of objective
-VecDuplicate(xmma,&dfdx); 
-PetscScalar *dfdx_array;
-VecGetArray(dfdx,&dfdx_array);
-VecRestoreArray(dfdx,&dfdx_array); 
-//*****************************************************//gx
-PetscScalar *gx= new PetscScalar[m]; // Array with constraint values
-
-//*****************************************************//dgdx
-Vec *dgdx; // Sensitivities of constraints (vector array)
-VecDuplicateVecs(xmma,m, &dgdx); 
-PetscScalar **dgdx_array;
-VecGetArrays(dgdx,m,&dgdx_array);
-VecRestoreArrays(dgdx,m,&dgdx_array);
 
 gamma.correctBoundaryConditions();
 qu.correctBoundaryConditions();

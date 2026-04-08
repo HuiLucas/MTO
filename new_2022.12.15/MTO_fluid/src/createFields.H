@@ -110,7 +110,19 @@ volScalarField gsensVol
 volScalarField gsenshVol(xh);
 
 // find the cells on the boundary
-dictionary conFunc = mesh.solutionDict().subDict("constraintFunctionDict_flow");
+IOdictionary fvSolutionDict
+(
+   IOobject
+   (
+       "fvSolution",
+       runTime.system(),
+       mesh,
+       IOobject::MUST_READ,
+       IOobject::NO_WRITE
+   )
+);
+
+dictionary conFunc = fvSolutionDict.subDict("constraintFunctionDict_flow");
 int nObjPatch =conFunc.lookupOrDefault<scalar>("numberConstraintPatches",2);
 wordList conPatchNames = conFunc.lookup("constraintPatchesNames");
 label conPatchList[nObjPatch];//patch list
