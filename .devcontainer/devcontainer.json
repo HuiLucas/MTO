@@ -1,0 +1,16 @@
+{
+  "name": "MTO OpenFOAM (Ubuntu 22.04)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "bash -lc 'source /opt/openfoam11/etc/bashrc && wmake -help >/dev/null'",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

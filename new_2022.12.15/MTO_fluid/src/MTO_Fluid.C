@@ -2,8 +2,7 @@
 
 static char help[] = "topology optimization of fluid problem\n";
 #include "fvCFD.H"
-#include "singlePhaseTransportModel.H"
-#include "turbulentTransportModel.H"
+#include "../../common/OpenFOAMCompat.H"
 #include "simpleControl.H"
 #include "fvOptions.H"//
 #include "MMA/MMA.h"

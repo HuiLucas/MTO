@@ -5,7 +5,7 @@ tmp<fvVectorMatrix> tUEqn
 (
     fvm::div(phi, U)
   + MRF.DDt(U)
-  + turbulence->divDevReff(U)
+  + mtoCompat::divDevMomentum(turbulence(), U)
   //- fvm::laplacian(nu,U)
   + fvm::Sp(alpha, U)
  ==
@@ -78,6 +78,5 @@ p.storePrevIter();
 phi.storePrevIter();
 
 }
-
 
 
