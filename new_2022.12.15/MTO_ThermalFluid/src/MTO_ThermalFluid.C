@@ -1,6 +1,6 @@
 //Author: Yu Minghao    Updated: May 2020 
 
-static char help[] = "topology optimization of fluid problem\n";
+static char help[] = "topology optimization of thermal-fluid problem\n";
 #include "fvCFD.H"
 #include "../../common/OpenFOAMCompat.H"
 #include "simpleControl.H"
