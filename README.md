@@ -13,6 +13,15 @@ Installation
 ------------
 **The old version of MTO is difficult to install, so I made some changes in the code.**
 
+For newer OpenFOAM releases, use the solvers in:
+
+- `new_2022.12.15/MTO_fluid/src`
+- `new_2022.12.15/MTO_ThermalFluid/src`
+- `new_2022.12.15/MTO_ThermalFluidStructural/src`
+- `new_2022.12.15/MTO_solid/MTO_SolidDisplacement`
+
+These sources now include a compatibility layer for both legacy turbulence/transport APIs and newer momentum-transport APIs.
+
 Before running this solver, following softwares are needed.  
 
 (a) **OpenFOAM 6.0**  (www.openfoam.org)
