@@ -14,7 +14,7 @@ Each outer optimisation iteration:
        (thin-plate-spline, same as the notebook).
     2. Evaluate the Schwarz-P SDF at every mesh cell centre.
     3. Map SDF → gamma via a smooth Heaviside (sigmoid).  gamma=1 → fluid,
-       gamma=0 → solid wall, matching the OpenFOAM convention in this case.
+       gamma=0 →  wall, matching the OpenFOAM convention in this case.
     4. Write the gamma field to the OpenFOAM case directory.
     5. Set controlDict startTime/endTime so the solver runs exactly ONE outer
        iteration, then exit.

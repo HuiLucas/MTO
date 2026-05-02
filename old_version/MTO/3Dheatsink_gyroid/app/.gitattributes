@@ -1,0 +1,9 @@
+p filter=lfs diff=lfs merge=lfs -text
+pb filter=lfs diff=lfs merge=lfs -text
+pc filter=lfs diff=lfs merge=lfs -text
+T filter=lfs diff=lfs merge=lfs -text
+Tb filter=lfs diff=lfs merge=lfs -text
+U filter=lfs diff=lfs merge=lfs -text
+Ub filter=lfs diff=lfs merge=lfs -text
+Uc filter=lfs diff=lfs merge=lfs -text
+gamma filter=lfs diff=lfs merge=lfs -text

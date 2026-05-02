@@ -1,0 +1,82 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  11
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       polyBoundaryMesh;
+    location    "constant/polyMesh";
+    object      boundary;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+8
+(
+    inlet
+    {
+        type            patch;
+        nFaces          0;
+        startFace       71857;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          0;
+        startFace       71857;
+    }
+    force
+    {
+        type            patch;
+        nFaces          0;
+        startFace       71857;
+    }
+    wall
+    {
+        type            patch;
+        nFaces          1420;
+        startFace       71857;
+    }
+    sym
+    {
+        type            symmetry;
+        inGroups        List<word> 1(symmetry);
+        nFaces          1240;
+        startFace       73277;
+    }
+    procBoundary16to12
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          818;
+        startFace       74517;
+        matchTolerance  0.0001;
+        myProcNo        16;
+        neighbProcNo    12;
+    }
+    procBoundary16to17
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          629;
+        startFace       75335;
+        matchTolerance  0.0001;
+        myProcNo        16;
+        neighbProcNo    17;
+    }
+    procBoundary16to18
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          1249;
+        startFace       75964;
+        matchTolerance  0.0001;
+        myProcNo        16;
+        neighbProcNo    18;
+    }
+)
+
+// ************************************************************************* //
