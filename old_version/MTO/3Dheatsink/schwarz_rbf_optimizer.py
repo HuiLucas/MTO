@@ -729,23 +729,25 @@ class SchwarzRBFOptimizer:
         print(f"  ||fsens||_inf  = {np.abs(fsens).max():.4g}")
 
         # 5. Chain-rule gradient
-        # Normalise fsens the same way the C++ MMA does:  dfdx = fsens/(scalef*nallcells)
-        # This keeps the gradient O(1) per design variable, independent of mesh size,
-        # and consistent with the scale of meanT.
-        scale = float(np.abs(fsens).max()) * len(fsens)
-        if scale > 0:
-            fsens_scaled = fsens / scale
-        else:
-            fsens_scaled = fsens
+        # fsens = dJ/d(gamma) from OpenFOAM (adjoint sensitivity, raw scale in W/kg).
+        # L-BFGS-B requires grad = d(returned_J)/dx exactly — scale both J and grad by
+        # the SAME fixed reference so (J_scaled, grad_scaled) stay consistent across calls.
+        # _fsens_ref is captured on the first call and reused forever.
+        if not hasattr(self, '_fsens_ref'):
+            self._fsens_ref = float(np.abs(fsens).max())
+            if self._fsens_ref == 0:
+                self._fsens_ref = 1.0
+        fsens_norm = fsens / self._fsens_ref
 
         grad_ctrl = chain_rule_gradient(
-            fsens_scaled, self.cell_centers_mm, disp_mm, sdf,
+            fsens_norm, self.cell_centers_mm, disp_mm, sdf,
             self.k, self.epsilon, self.W
         )                                           # (N_ctrl, 3)
         grad_flat = grad_ctrl.ravel()               # (N_ctrl * 3,)
 
         elapsed = time.time() - t0
-        print(f"  elapsed = {elapsed:.1f} s  ||grad||_2 = {np.linalg.norm(grad_flat):.4g}")
+        print(f"  elapsed = {elapsed:.1f} s  ||grad||_2 = {np.linalg.norm(grad_flat):.4g}  "
+              f"fsens_ref = {self._fsens_ref:.4g}")
 
         self._history.append(dict(
             iter=self._iter, J=meanT, dissPower=dissPower, vol=vol_use,
@@ -753,6 +755,9 @@ class SchwarzRBFOptimizer:
         ))
         self._save_history()
 
+        # Return unscaled meanT so the optimizer sees physically meaningful values.
+        # grad_flat = (1/fsens_ref) * true_grad satisfies the Wolfe sufficient-decrease
+        # condition when fsens_ref >> c1 (true for fsens_ref ~ 1e10 >> c1 ~ 1e-4).
         return float(meanT), grad_flat
 
     def _save_history(self) -> None:
@@ -816,7 +821,7 @@ class SchwarzRBFOptimizer:
             method='L-BFGS-B',
             jac=True,                  # objective_and_gradient returns (f, g)
             bounds=self.bounds,
-            options=dict(maxiter=n_iters, ftol=1e-10, gtol=1e-6, iprint=1),
+            options=dict(maxiter=n_iters, ftol=1e-30, gtol=1e-4, iprint=1),
         )
 
         print(f"\nOptimisation finished: {result.message}")
