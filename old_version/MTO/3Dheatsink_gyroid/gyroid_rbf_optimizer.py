@@ -33,7 +33,7 @@ Each outer optimisation iteration:
 
 Usage
 -----
-    python schwarz_rbf_optimizer.py [--case app] [--iters 50] [--parallel 20]
+    python gyroid_rbf_optimizer.py [--case app] [--iters 50] [--parallel 20]
 
 Dependencies
 ------------
@@ -515,6 +515,7 @@ def run_openfoam_one_step(case_dir: Path,
 
         log_path = case_dir / f'log.{solver}.iter{iter_num:03d}'
         print(f"  mpirun -n {n_procs} {solver} … (log → {log_path.name})")
+        time.sleep(3)   # let MPI socket state from previous run clear (prevents SIGPIPE)
         with open(log_path, 'wb') as lf:
             r = subprocess.run(
                 ['mpirun', '--oversubscribe', '-n', str(n_procs),
@@ -722,6 +723,7 @@ class GyroidRBFOptimizer:
             grad_norm=float(np.linalg.norm(grad_flat)), elapsed=elapsed
         ))
         self._save_history()
+        self.save_ctrl_pts(x, tag='_checkpoint')   # always overwritten; safe restart point
 
         return float(meanT), grad_flat
 

@@ -8,34 +8,34 @@
 Build  : 11-e1fc8c682ae6
 Exec   : MTO_TF -parallel -case /workspace/MTO/old_version/MTO/3Dheatsink_gyroid/app
 Date   : May 02 2026
-Time   : 13:59:58
+Time   : 16:31:40
 Host   : "088f4e342178"
-PID    : 626959
+PID    : 739589
 I/O    : uncollated
 Case   : /workspace/MTO/old_version/MTO/3Dheatsink_gyroid/app
 nProcs : 20
 Slaves : 
 19
 (
-"088f4e342178.626960"
-"088f4e342178.626961"
-"088f4e342178.626962"
-"088f4e342178.626963"
-"088f4e342178.626964"
-"088f4e342178.626965"
-"088f4e342178.626966"
-"088f4e342178.626967"
-"088f4e342178.626968"
-"088f4e342178.626970"
-"088f4e342178.626973"
-"088f4e342178.626975"
-"088f4e342178.626976"
-"088f4e342178.626979"
-"088f4e342178.626983"
-"088f4e342178.626987"
-"088f4e342178.626990"
-"088f4e342178.626992"
-"088f4e342178.626994"
+"088f4e342178.739590"
+"088f4e342178.739591"
+"088f4e342178.739592"
+"088f4e342178.739593"
+"088f4e342178.739594"
+"088f4e342178.739595"
+"088f4e342178.739596"
+"088f4e342178.739597"
+"088f4e342178.739598"
+"088f4e342178.739599"
+"088f4e342178.739600"
+"088f4e342178.739601"
+"088f4e342178.739605"
+"088f4e342178.739607"
+"088f4e342178.739609"
+"088f4e342178.739611"
+"088f4e342178.739612"
+"088f4e342178.739614"
+"088f4e342178.739616"
 )
 
 Pstream initialised with:
@@ -373,7 +373,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01233, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01499, Final residual = 0.001399, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.005525, Final residual = 0.0005037, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01899, Final residual = 0.000151, No Iterations 6
-time step continuity errors : sum local = 0.0002553, global = 4.651e-06, cumulative = -7.902e-05
+time step continuity errors : sum local = 0.0002553, global = 4.652e-06, cumulative = -7.902e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01235, Final residual = 0.001142, No Iterations 4
@@ -415,7 +415,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01242, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01468, Final residual = 0.001379, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.005267, Final residual = 0.0004814, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01828, Final residual = 0.0001683, No Iterations 6
-time step continuity errors : sum local = 0.0002857, global = 4.202e-07, cumulative = -6.221e-05
+time step continuity errors : sum local = 0.0002857, global = 4.201e-07, cumulative = -6.221e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01242, Final residual = 0.001155, No Iterations 4
@@ -527,7 +527,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01226, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01362, Final residual = 0.001279, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004652, Final residual = 0.0004276, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.017, Final residual = 0.0001452, No Iterations 6
-time step continuity errors : sum local = 0.0002485, global = 3.174e-06, cumulative = -7.865e-06
+time step continuity errors : sum local = 0.0002485, global = 3.175e-06, cumulative = -7.865e-06
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01222, Final residual = 0.00114, No Iterations 4
@@ -555,7 +555,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01211, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01338, Final residual = 0.001264, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004498, Final residual = 0.0004128, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01646, Final residual = 0.0001484, No Iterations 6
-time step continuity errors : sum local = 0.0002547, global = 1.577e-06, cumulative = 4.53e-07
+time step continuity errors : sum local = 0.0002547, global = 1.577e-06, cumulative = 4.533e-07
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01206, Final residual = 0.001132, No Iterations 4
@@ -569,21 +569,21 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01202, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01328, Final residual = 0.001259, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004422, Final residual = 0.0004053, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01618, Final residual = 0.0001451, No Iterations 6
-time step continuity errors : sum local = 0.0002492, global = 1.188e-06, cumulative = 3.04e-06
+time step continuity errors : sum local = 0.0002492, global = 1.188e-06, cumulative = 3.041e-06
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01197, Final residual = 0.001127, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.01323, Final residual = 0.001256, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004383, Final residual = 0.0004014, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01604, Final residual = 0.0001441, No Iterations 6
-time step continuity errors : sum local = 0.0002476, global = 1.386e-06, cumulative = 4.426e-06
+time step continuity errors : sum local = 0.0002476, global = 1.386e-06, cumulative = 4.427e-06
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01193, Final residual = 0.001124, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.01318, Final residual = 0.001254, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004344, Final residual = 0.0003974, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.0159, Final residual = 0.0001448, No Iterations 6
-time step continuity errors : sum local = 0.0002489, global = 1.327e-06, cumulative = 5.753e-06
+time step continuity errors : sum local = 0.0002489, global = 1.327e-06, cumulative = 5.754e-06
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01188, Final residual = 0.001121, No Iterations 4
@@ -597,14 +597,14 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01183, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01308, Final residual = 0.001248, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004268, Final residual = 0.0003897, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01564, Final residual = 0.0001479, No Iterations 6
-time step continuity errors : sum local = 0.0002546, global = 1.259e-06, cumulative = 8.321e-06
+time step continuity errors : sum local = 0.0002546, global = 1.259e-06, cumulative = 8.322e-06
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01177, Final residual = 0.001114, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.01303, Final residual = 0.001245, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.00423, Final residual = 0.0003859, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01553, Final residual = 0.0001487, No Iterations 6
-time step continuity errors : sum local = 0.0002561, global = 1.15e-06, cumulative = 9.471e-06
+time step continuity errors : sum local = 0.0002561, global = 1.15e-06, cumulative = 9.472e-06
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01172, Final residual = 0.00111, No Iterations 4
@@ -625,7 +625,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.0116, Final residual = 0.001
 smoothSolver:  Solving for Uy, Initial residual = 0.01287, Final residual = 0.001233, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.004118, Final residual = 0.0003748, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01524, Final residual = 0.0001467, No Iterations 6
-time step continuity errors : sum local = 0.0002528, global = 6.595e-07, cumulative = 1.193e-05
+time step continuity errors : sum local = 0.0002528, global = 6.594e-07, cumulative = 1.193e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01154, Final residual = 0.001095, No Iterations 4
@@ -660,7 +660,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.01129, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.01257, Final residual = 0.001206, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.003938, Final residual = 0.0003574, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01485, Final residual = 0.0001349, No Iterations 6
-time step continuity errors : sum local = 0.0002329, global = 9.92e-07, cumulative = 1.556e-05
+time step continuity errors : sum local = 0.0002329, global = 9.919e-07, cumulative = 1.556e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01122, Final residual = 0.001065, No Iterations 4
@@ -709,14 +709,14 @@ smoothSolver:  Solving for Ux, Initial residual = 0.0108, Final residual = 0.001
 smoothSolver:  Solving for Uy, Initial residual = 0.0121, Final residual = 0.001157, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.003711, Final residual = 0.0003362, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01411, Final residual = 0.0001156, No Iterations 6
-time step continuity errors : sum local = 0.0001999, global = 1.413e-06, cumulative = 2.531e-05
+time step continuity errors : sum local = 0.0001999, global = 1.413e-06, cumulative = 2.53e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01073, Final residual = 0.001015, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.01202, Final residual = 0.00115, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.003682, Final residual = 0.0003336, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01399, Final residual = 0.0001144, No Iterations 6
-time step continuity errors : sum local = 0.000198, global = 1.584e-06, cumulative = 2.689e-05
+time step continuity errors : sum local = 0.0001979, global = 1.584e-06, cumulative = 2.689e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.01066, Final residual = 0.001008, No Iterations 4
@@ -814,7 +814,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.009791, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.01099, Final residual = 0.001046, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.003316, Final residual = 0.0003017, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01226, Final residual = 9.626e-05, No Iterations 6
-time step continuity errors : sum local = 0.0001671, global = 1.923e-06, cumulative = 6.1e-05
+time step continuity errors : sum local = 0.0001671, global = 1.923e-06, cumulative = 6.099e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.009733, Final residual = 0.0009156, No Iterations 4
@@ -849,7 +849,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.009519, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.01066, Final residual = 0.001013, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.003193, Final residual = 0.0002912, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01174, Final residual = 9.366e-05, No Iterations 6
-time step continuity errors : sum local = 0.0001627, global = 1.771e-06, cumulative = 7.024e-05
+time step continuity errors : sum local = 0.0001627, global = 1.772e-06, cumulative = 7.024e-05
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.009471, Final residual = 0.0008902, No Iterations 4
@@ -880,7 +880,7 @@ GAMG:  Solving for p, Initial residual = 0.01139, Final residual = 9.137e-05, No
 time step continuity errors : sum local = 0.0001588, global = 1.6e-06, cumulative = 7.725e-05
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.009292, Final residual = 0.0008726, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.009291, Final residual = 0.0008726, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.01034, Final residual = 0.0009824, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.003072, Final residual = 0.0002807, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01131, Final residual = 9.075e-05, No Iterations 6
@@ -936,7 +936,7 @@ GAMG:  Solving for p, Initial residual = 0.01077, Final residual = 8.4e-05, No I
 time step continuity errors : sum local = 0.0001461, global = 1.712e-06, cumulative = 9.102e-05
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.008993, Final residual = 0.000841, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.008992, Final residual = 0.000841, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.009857, Final residual = 0.0009356, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002886, Final residual = 0.0002643, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01069, Final residual = 8.278e-05, No Iterations 6
@@ -950,7 +950,7 @@ GAMG:  Solving for p, Initial residual = 0.01061, Final residual = 8.15e-05, No 
 time step continuity errors : sum local = 0.0001418, global = 1.847e-06, cumulative = 9.467e-05
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.008928, Final residual = 0.0008344, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.008927, Final residual = 0.0008344, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.009743, Final residual = 0.0009252, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002841, Final residual = 0.0002602, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.01052, Final residual = 8.019e-05, No Iterations 6
@@ -1006,7 +1006,7 @@ GAMG:  Solving for p, Initial residual = 0.009913, Final residual = 7.081e-05, N
 time step continuity errors : sum local = 0.0001231, global = 1.31e-06, cumulative = 0.000107
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.008676, Final residual = 0.0008139, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.008675, Final residual = 0.0008139, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.009318, Final residual = 0.0008901, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002666, Final residual = 0.0002442, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.009831, Final residual = 6.946e-05, No Iterations 6
@@ -1016,8 +1016,8 @@ Time = 1
 smoothSolver:  Solving for Ux, Initial residual = 0.008642, Final residual = 0.0008115, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.009268, Final residual = 0.0008861, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002645, Final residual = 0.0002422, No Iterations 4
-GAMG:  Solving for p, Initial residual = 0.009756, Final residual = 6.825e-05, No Iterations 6
-time step continuity errors : sum local = 0.0001187, global = 1.135e-06, cumulative = 0.0001093
+GAMG:  Solving for p, Initial residual = 0.009756, Final residual = 6.826e-05, No Iterations 6
+time step continuity errors : sum local = 0.0001187, global = 1.136e-06, cumulative = 0.0001093
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.008609, Final residual = 0.0008091, No Iterations 4
@@ -1045,14 +1045,14 @@ smoothSolver:  Solving for Ux, Initial residual = 0.008507, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.009068, Final residual = 0.0008702, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.00256, Final residual = 0.0002342, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.009498, Final residual = 6.334e-05, No Iterations 6
-time step continuity errors : sum local = 0.00011, global = 7.626e-07, cumulative = 0.0001129
+time step continuity errors : sum local = 0.00011, global = 7.627e-07, cumulative = 0.0001129
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.008472, Final residual = 0.0007986, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.009017, Final residual = 0.0008662, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002539, Final residual = 0.0002322, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.009441, Final residual = 6.224e-05, No Iterations 6
-time step continuity errors : sum local = 0.0001081, global = 6.936e-07, cumulative = 0.0001136
+time step continuity errors : sum local = 0.0001081, global = 6.937e-07, cumulative = 0.0001136
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.008436, Final residual = 0.0007957, No Iterations 4
@@ -1066,7 +1066,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.0084, Final residual = 0.000
 smoothSolver:  Solving for Uy, Initial residual = 0.008917, Final residual = 0.0008579, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002497, Final residual = 0.0002282, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.009336, Final residual = 6.021e-05, No Iterations 6
-time step continuity errors : sum local = 0.0001045, global = 5.84e-07, cumulative = 0.0001149
+time step continuity errors : sum local = 0.0001045, global = 5.841e-07, cumulative = 0.0001149
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.008364, Final residual = 0.0007897, No Iterations 4
@@ -1122,7 +1122,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.00811, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.00853, Final residual = 0.0008237, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002328, Final residual = 0.0002122, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008961, Final residual = 5.399e-05, No Iterations 6
-time step continuity errors : sum local = 9.337e-05, global = 4.46e-07, cumulative = 0.0001186
+time step continuity errors : sum local = 9.337e-05, global = 4.459e-07, cumulative = 0.0001186
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.008075, Final residual = 0.0007638, No Iterations 4
@@ -1132,7 +1132,7 @@ GAMG:  Solving for p, Initial residual = 0.008909, Final residual = 5.334e-05, N
 time step continuity errors : sum local = 9.222e-05, global = 4.591e-07, cumulative = 0.000119
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.008041, Final residual = 0.0007605, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.00804, Final residual = 0.0007605, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.008436, Final residual = 0.0008149, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002286, Final residual = 0.0002082, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008855, Final residual = 5.272e-05, No Iterations 6
@@ -1150,7 +1150,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.007972, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.008343, Final residual = 0.0008061, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002244, Final residual = 0.0002043, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008732, Final residual = 5.164e-05, No Iterations 6
-time step continuity errors : sum local = 8.918e-05, global = 5.329e-07, cumulative = 0.0001206
+time step continuity errors : sum local = 8.918e-05, global = 5.328e-07, cumulative = 0.0001206
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007939, Final residual = 0.0007507, No Iterations 4
@@ -1171,24 +1171,24 @@ smoothSolver:  Solving for Ux, Initial residual = 0.007872, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.008203, Final residual = 0.0007928, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002182, Final residual = 0.0001984, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008525, Final residual = 5.042e-05, No Iterations 6
-time step continuity errors : sum local = 8.696e-05, global = 6.631e-07, cumulative = 0.0001224
+time step continuity errors : sum local = 8.696e-05, global = 6.63e-07, cumulative = 0.0001224
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007839, Final residual = 0.0007411, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.008156, Final residual = 0.0007883, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002161, Final residual = 0.0001965, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008451, Final residual = 5.007e-05, No Iterations 6
-time step continuity errors : sum local = 8.634e-05, global = 7.201e-07, cumulative = 0.0001231
+time step continuity errors : sum local = 8.634e-05, global = 7.2e-07, cumulative = 0.0001231
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007807, Final residual = 0.0007379, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.008109, Final residual = 0.0007838, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002141, Final residual = 0.0001946, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008374, Final residual = 4.967e-05, No Iterations 6
-time step continuity errors : sum local = 8.562e-05, global = 6.144e-07, cumulative = 0.0001237
+time step continuity errors : sum local = 8.562e-05, global = 6.143e-07, cumulative = 0.0001237
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.007775, Final residual = 0.0007348, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.007774, Final residual = 0.0007348, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.008062, Final residual = 0.0007793, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.00212, Final residual = 0.0001928, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008295, Final residual = 4.936e-05, No Iterations 6
@@ -1196,7 +1196,7 @@ time step continuity errors : sum local = 8.505e-05, global = 7.814e-07, cumulat
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007742, Final residual = 0.0007316, No Iterations 4
-smoothSolver:  Solving for Uy, Initial residual = 0.008016, Final residual = 0.0007748, No Iterations 4
+smoothSolver:  Solving for Uy, Initial residual = 0.008015, Final residual = 0.0007748, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.0021, Final residual = 0.0001909, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008215, Final residual = 4.907e-05, No Iterations 6
 time step continuity errors : sum local = 8.452e-05, global = 6.69e-07, cumulative = 0.0001252
@@ -1213,7 +1213,7 @@ smoothSolver:  Solving for Ux, Initial residual = 0.007678, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.007922, Final residual = 0.0007658, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002061, Final residual = 0.0001873, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.008054, Final residual = 4.855e-05, No Iterations 6
-time step continuity errors : sum local = 8.357e-05, global = 7.255e-07, cumulative = 0.0001266
+time step continuity errors : sum local = 8.357e-05, global = 7.254e-07, cumulative = 0.0001266
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007646, Final residual = 0.0007223, No Iterations 4
@@ -1227,14 +1227,14 @@ smoothSolver:  Solving for Ux, Initial residual = 0.007613, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.007827, Final residual = 0.0007567, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002023, Final residual = 0.0001837, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.007895, Final residual = 4.81e-05, No Iterations 6
-time step continuity errors : sum local = 8.274e-05, global = 8.494e-07, cumulative = 0.0001282
+time step continuity errors : sum local = 8.273e-05, global = 8.493e-07, cumulative = 0.0001282
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007582, Final residual = 0.000716, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.00778, Final residual = 0.0007521, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.002004, Final residual = 0.000182, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.00782, Final residual = 4.789e-05, No Iterations 6
-time step continuity errors : sum local = 8.234e-05, global = 9.321e-07, cumulative = 0.0001292
+time step continuity errors : sum local = 8.234e-05, global = 9.32e-07, cumulative = 0.0001292
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007549, Final residual = 0.0007129, No Iterations 4
@@ -1280,7 +1280,7 @@ time step continuity errors : sum local = 7.997e-05, global = 1.181e-06, cumulat
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007361, Final residual = 0.000694, No Iterations 4
-smoothSolver:  Solving for Uy, Initial residual = 0.007455, Final residual = 0.0007198, No Iterations 4
+smoothSolver:  Solving for Uy, Initial residual = 0.007455, Final residual = 0.0007197, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001877, Final residual = 0.0001706, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.00735, Final residual = 4.622e-05, No Iterations 6
 time step continuity errors : sum local = 7.927e-05, global = 1.2e-06, cumulative = 0.0001371
@@ -1371,7 +1371,7 @@ time step continuity errors : sum local = 6.917e-05, global = 1.102e-06, cumulat
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.007001, Final residual = 0.0006558, No Iterations 4
-smoothSolver:  Solving for Uy, Initial residual = 0.006904, Final residual = 0.0006646, No Iterations 4
+smoothSolver:  Solving for Uy, Initial residual = 0.006903, Final residual = 0.0006646, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001669, Final residual = 0.0001521, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.006618, Final residual = 4.023e-05, No Iterations 6
 time step continuity errors : sum local = 6.863e-05, global = 1.066e-06, cumulative = 0.0001514
@@ -1427,16 +1427,16 @@ time step continuity errors : sum local = 6.734e-05, global = 1.013e-06, cumulat
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.006798, Final residual = 0.000633, No Iterations 4
-smoothSolver:  Solving for Uy, Initial residual = 0.006614, Final residual = 0.0006347, No Iterations 4
+smoothSolver:  Solving for Uy, Initial residual = 0.006614, Final residual = 0.0006346, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001557, Final residual = 0.0001419, No Iterations 4
-GAMG:  Solving for p, Initial residual = 0.006175, Final residual = 4.013e-05, No Iterations 6
+GAMG:  Solving for p, Initial residual = 0.006175, Final residual = 4.012e-05, No Iterations 6
 time step continuity errors : sum local = 6.824e-05, global = 1.002e-06, cumulative = 0.0001595
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.006774, Final residual = 0.0006303, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.00658, Final residual = 0.0006313, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001543, Final residual = 0.0001407, No Iterations 4
-GAMG:  Solving for p, Initial residual = 0.006124, Final residual = 4.088e-05, No Iterations 6
+GAMG:  Solving for p, Initial residual = 0.006124, Final residual = 4.087e-05, No Iterations 6
 time step continuity errors : sum local = 6.949e-05, global = 1.031e-06, cumulative = 0.0001606
 Time = 1
 
@@ -1444,10 +1444,10 @@ smoothSolver:  Solving for Ux, Initial residual = 0.00675, Final residual = 0.00
 smoothSolver:  Solving for Uy, Initial residual = 0.006546, Final residual = 0.000628, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.00153, Final residual = 0.0001395, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.006074, Final residual = 4.174e-05, No Iterations 6
-time step continuity errors : sum local = 7.094e-05, global = 1.067e-06, cumulative = 0.0001616
+time step continuity errors : sum local = 7.093e-05, global = 1.067e-06, cumulative = 0.0001616
 Time = 1
 
-smoothSolver:  Solving for Ux, Initial residual = 0.006727, Final residual = 0.0006255, No Iterations 4
+smoothSolver:  Solving for Ux, Initial residual = 0.006727, Final residual = 0.0006254, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.006512, Final residual = 0.0006248, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001517, Final residual = 0.0001383, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.006026, Final residual = 4.264e-05, No Iterations 6
@@ -1465,14 +1465,14 @@ smoothSolver:  Solving for Ux, Initial residual = 0.006681, Final residual = 0.0
 smoothSolver:  Solving for Uy, Initial residual = 0.006443, Final residual = 0.0006185, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001491, Final residual = 0.0001359, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.005932, Final residual = 4.43e-05, No Iterations 6
-time step continuity errors : sum local = 7.52e-05, global = 1.133e-06, cumulative = 0.000165
+time step continuity errors : sum local = 7.519e-05, global = 1.133e-06, cumulative = 0.000165
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.006659, Final residual = 0.0006191, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.006409, Final residual = 0.0006154, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001478, Final residual = 0.0001347, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.005886, Final residual = 4.505e-05, No Iterations 6
-time step continuity errors : sum local = 7.645e-05, global = 1.152e-06, cumulative = 0.0001662
+time step continuity errors : sum local = 7.644e-05, global = 1.152e-06, cumulative = 0.0001662
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.006638, Final residual = 0.0006172, No Iterations 4
@@ -1485,31 +1485,31 @@ Time = 1
 smoothSolver:  Solving for Ux, Initial residual = 0.006617, Final residual = 0.0006154, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.00634, Final residual = 0.0006094, No Iterations 4
 smoothSolver:  Solving for Uz, Initial residual = 0.001453, Final residual = 0.0001324, No Iterations 4
-GAMG:  Solving for p, Initial residual = 0.005793, Final residual = 4.63e-05, No Iterations 6
+GAMG:  Solving for p, Initial residual = 0.005793, Final residual = 4.629e-05, No Iterations 6
 time step continuity errors : sum local = 7.849e-05, global = 1.19e-06, cumulative = 0.0001685
 Time = 1
 
 smoothSolver:  Solving for Ux, Initial residual = 0.006596, Final residual = 0.0006137, No Iterations 4
 smoothSolver:  Solving for Uy, Initial residual = 0.006305, Final residual = 0.0006064, No Iterations 4
-smoothSolver:  Solving for Uz, Initial residual = 0.001441, Final residual = 0.0001312, No Iterations 4
+smoothSolver:  Solving for Uz, Initial residual = 0.00144, Final residual = 0.0001312, No Iterations 4
 GAMG:  Solving for p, Initial residual = 0.005747, Final residual = 4.677e-05, No Iterations 6
-time step continuity errors : sum local = 7.927e-05, global = 1.201e-06, cumulative = 0.0001698
+time step continuity errors : sum local = 7.927e-05, global = 1.201e-06, cumulative = 0.0001697
 
 slove pri-heat
 
-DILUPBiCGStab:  Solving for T, Initial residual = 1, Final residual = 8.84e-07, No Iterations 225
+DILUPBiCGStab:  Solving for T, Initial residual = 1, Final residual = 5.905e-07, No Iterations 225
 
 slove pri-heat
 
-DILUPBiCGStab:  Solving for T, Initial residual = 0.1192, Final residual = 8.152e-07, No Iterations 209
+DILUPBiCGStab:  Solving for T, Initial residual = 0.1192, Final residual = 9.959e-07, No Iterations 201
 
 slove adj-heat-b
 
-DILUPBiCGStab:  Solving for Tb, Initial residual = 1, Final residual = 1.059e-07, No Iterations 368
+DILUPBiCGStab:  Solving for Tb, Initial residual = 1, Final residual = 4.719e-07, No Iterations 345
 
 slove adj-heat-b
 
-DILUPBiCGStab:  Solving for Tb, Initial residual = 0.8376, Final residual = 4.016e-07, No Iterations 228
+DILUPBiCGStab:  Solving for Tb, Initial residual = 0.8376, Final residual = 4.024e-07, No Iterations 228
 
 slove adj-flow-T
 
@@ -1537,7 +1537,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.7353, Final residual = 0.0501, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.6937, Final residual = 0.04544, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.743, Final residual = 0.05568, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 0.488, Final residual = 0.003246, No Iterations 7
+GAMG:  Solving for pb, Initial residual = 0.4881, Final residual = 0.003246, No Iterations 7
 
 slove adj-flow-T
 
@@ -1625,7 +1625,7 @@ GAMG:  Solving for pb, Initial residual = 0.05351, Final residual = 0.0004448, N
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.1516, Final residual = 0.009357, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.1516, Final residual = 0.009356, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.1703, Final residual = 0.01079, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.0851, Final residual = 0.005513, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.02766, Final residual = 0.000216, No Iterations 7
@@ -1647,14 +1647,14 @@ GAMG:  Solving for pb, Initial residual = 0.02943, Final residual = 0.0002436, N
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.09924, Final residual = 0.006201, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.119, Final residual = 0.00764, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.119, Final residual = 0.007639, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.06563, Final residual = 0.004266, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.01386, Final residual = 0.0001118, No Iterations 7
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.1307, Final residual = 0.00867, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.1461, Final residual = 0.009467, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.1461, Final residual = 0.009468, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.1154, Final residual = 0.008262, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.01507, Final residual = 9.384e-05, No Iterations 7
 
@@ -1716,7 +1716,7 @@ GAMG:  Solving for pb, Initial residual = 0.002482, Final residual = 1.817e-05, 
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.02449, Final residual = 0.00157, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.02449, Final residual = 0.001569, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.02679, Final residual = 0.001735, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.02314, Final residual = 0.001592, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.003425, Final residual = 2.315e-05, No Iterations 7
@@ -1772,8 +1772,8 @@ GAMG:  Solving for pb, Initial residual = 0.0008412, Final residual = 7.821e-06,
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.009671, Final residual = 0.0006051, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.009901, Final residual = 0.000631, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.009672, Final residual = 0.0006051, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.009901, Final residual = 0.0006309, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00707, Final residual = 0.000445, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.000607, Final residual = 5.107e-06, No Iterations 6
 
@@ -1794,14 +1794,14 @@ GAMG:  Solving for pb, Initial residual = 0.0004847, Final residual = 4.395e-06,
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.007052, Final residual = 0.0004341, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.007657, Final residual = 0.0004926, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.007658, Final residual = 0.0004926, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.005124, Final residual = 0.0002999, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0004032, Final residual = 3.037e-06, No Iterations 6
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.006154, Final residual = 0.0003765, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.006058, Final residual = 0.0003823, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.006058, Final residual = 0.0003824, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.005159, Final residual = 0.0003104, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0004348, Final residual = 3.116e-06, No Iterations 7
 
@@ -1816,7 +1816,7 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.006295, Final residual = 0.0003948, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.005974, Final residual = 0.0003818, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.004851, Final residual = 0.0002941, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.00485, Final residual = 0.0002941, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0002696, Final residual = 1.73e-06, No Iterations 6
 
 slove adj-flow-T
@@ -1865,7 +1865,7 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.004781, Final residual = 0.0003002, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.004534, Final residual = 0.0002921, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.003848, Final residual = 0.0002289, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003847, Final residual = 0.0002289, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0001361, Final residual = 8.383e-07, No Iterations 6
 
 slove adj-flow-T
@@ -1879,14 +1879,14 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.004559, Final residual = 0.0002862, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.004329, Final residual = 0.0002822, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.003615, Final residual = 0.0002128, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003615, Final residual = 0.0002127, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0001176, Final residual = 7.165e-07, No Iterations 5
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.004482, Final residual = 0.0002821, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.004167, Final residual = 0.0002715, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.003606, Final residual = 0.0002136, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003605, Final residual = 0.0002136, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0001109, Final residual = 1.009e-06, No Iterations 5
 
 slove adj-flow-T
@@ -1900,7 +1900,7 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.004341, Final residual = 0.0002753, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.004035, Final residual = 0.0002642, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.003566, Final residual = 0.0002135, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003566, Final residual = 0.0002134, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 0.0001, Final residual = 8.156e-07, No Iterations 4
 
 slove adj-flow-T
@@ -1936,7 +1936,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.003929, Final residual = 0.0002507, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.003626, Final residual = 0.0002403, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.003306, Final residual = 0.0001979, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 8.524e-05, Final residual = 7.107e-07, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 8.524e-05, Final residual = 7.108e-07, No Iterations 4
 
 slove adj-flow-T
 
@@ -1949,8 +1949,8 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.003775, Final residual = 0.0002413, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.003493, Final residual = 0.0002324, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.003222, Final residual = 0.000193, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 8.281e-05, Final residual = 5.663e-07, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003221, Final residual = 0.000193, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 8.282e-05, Final residual = 5.663e-07, No Iterations 4
 
 slove adj-flow-T
 
@@ -1975,16 +1975,16 @@ GAMG:  Solving for pb, Initial residual = 7.856e-05, Final residual = 4.925e-07,
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.00352, Final residual = 0.0002261, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.00352, Final residual = 0.0002262, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.003223, Final residual = 0.0002162, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.00306, Final residual = 0.0001833, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003059, Final residual = 0.0001833, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 7.73e-05, Final residual = 9.138e-07, No Iterations 3
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.003459, Final residual = 0.0002224, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.003163, Final residual = 0.0002126, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.003029, Final residual = 0.0001816, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.003028, Final residual = 0.0001816, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 7.647e-05, Final residual = 7.416e-07, No Iterations 3
 
 slove adj-flow-T
@@ -1992,7 +1992,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.003397, Final residual = 0.0002186, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.003102, Final residual = 0.0002089, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002993, Final residual = 0.0001795, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 7.537e-05, Final residual = 6.886e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 7.537e-05, Final residual = 6.885e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2010,7 +2010,7 @@ GAMG:  Solving for pb, Initial residual = 7.344e-05, Final residual = 7.18e-07, 
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.003231, Final residual = 0.0002084, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.003232, Final residual = 0.0002084, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002928, Final residual = 0.0001982, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00288, Final residual = 0.0001724, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 7.253e-05, Final residual = 6.895e-07, No Iterations 3
@@ -2020,12 +2020,12 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.00318, Final residual = 0.0002052, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002874, Final residual = 0.0001948, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002847, Final residual = 0.0001704, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 7.175e-05, Final residual = 6.717e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 7.174e-05, Final residual = 6.717e-07, No Iterations 3
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.003129, Final residual = 0.000202, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.002822, Final residual = 0.0001916, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.002821, Final residual = 0.0001916, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002816, Final residual = 0.0001686, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 7.098e-05, Final residual = 6.613e-07, No Iterations 3
 
@@ -2040,8 +2040,8 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.003027, Final residual = 0.0001956, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002719, Final residual = 0.0001852, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.002758, Final residual = 0.0001651, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 6.915e-05, Final residual = 5.627e-07, No Iterations 3
+smoothSolver:  Solving for Ubz, Initial residual = 0.002757, Final residual = 0.000165, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 6.914e-05, Final residual = 5.627e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2069,19 +2069,19 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.002843, Final residual = 0.0001841, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.00253, Final residual = 0.0001732, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002636, Final residual = 0.0001573, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 6.557e-05, Final residual = 4.953e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 6.556e-05, Final residual = 4.953e-07, No Iterations 3
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.002798, Final residual = 0.0001813, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002486, Final residual = 0.0001704, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002607, Final residual = 0.0001555, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 6.463e-05, Final residual = 5.033e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 6.463e-05, Final residual = 5.032e-07, No Iterations 3
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.002755, Final residual = 0.0001785, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.002444, Final residual = 0.0001677, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.002443, Final residual = 0.0001677, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00258, Final residual = 0.0001538, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 6.371e-05, Final residual = 5.027e-07, No Iterations 3
 
@@ -2090,7 +2090,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.002713, Final residual = 0.0001759, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002402, Final residual = 0.000165, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002554, Final residual = 0.0001521, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 6.287e-05, Final residual = 4.957e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 6.286e-05, Final residual = 4.957e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2103,7 +2103,7 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.002633, Final residual = 0.0001707, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002324, Final residual = 0.0001599, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.002505, Final residual = 0.0001489, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.002504, Final residual = 0.0001489, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 6.152e-05, Final residual = 4.756e-07, No Iterations 3
 
 slove adj-flow-T
@@ -2153,7 +2153,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.002378, Final residual = 0.000154, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.002081, Final residual = 0.0001437, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002337, Final residual = 0.0001379, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.972e-05, Final residual = 5.545e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 5.972e-05, Final residual = 5.546e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2174,7 +2174,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.00228, Final residual = 0.0001474, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001989, Final residual = 0.0001374, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.002266, Final residual = 0.0001333, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.945e-05, Final residual = 5.836e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 5.945e-05, Final residual = 5.837e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2187,7 +2187,7 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.002218, Final residual = 0.0001432, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.00193, Final residual = 0.0001334, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.002218, Final residual = 0.0001303, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.002217, Final residual = 0.0001303, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 5.927e-05, Final residual = 6.03e-07, No Iterations 3
 
 slove adj-flow-T
@@ -2236,8 +2236,8 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.002019, Final residual = 0.0001298, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001739, Final residual = 0.0001202, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.002045, Final residual = 0.0001199, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.779e-05, Final residual = 6.242e-07, No Iterations 3
+smoothSolver:  Solving for Ubz, Initial residual = 0.002044, Final residual = 0.0001199, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 5.778e-05, Final residual = 6.242e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2258,7 +2258,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.00194, Final residual = 0.0001245, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001664, Final residual = 0.000115, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00197, Final residual = 0.0001156, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.658e-05, Final residual = 6.166e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 5.658e-05, Final residual = 6.167e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2279,7 +2279,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.001864, Final residual = 0.0001195, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001592, Final residual = 0.00011, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001897, Final residual = 0.0001115, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.504e-05, Final residual = 5.966e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 5.503e-05, Final residual = 5.966e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2297,10 +2297,10 @@ GAMG:  Solving for pb, Initial residual = 5.382e-05, Final residual = 5.79e-07, 
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.001792, Final residual = 0.0001148, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.001792, Final residual = 0.0001147, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001524, Final residual = 0.0001053, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001826, Final residual = 0.0001075, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.317e-05, Final residual = 5.7e-07, No Iterations 3
+smoothSolver:  Solving for Ubz, Initial residual = 0.001826, Final residual = 0.0001074, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 5.316e-05, Final residual = 5.7e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2314,7 +2314,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.001746, Final residual = 0.0001117, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001481, Final residual = 0.0001023, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00178, Final residual = 0.0001049, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 5.176e-05, Final residual = 5.506e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 5.175e-05, Final residual = 5.506e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2362,7 +2362,7 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001596, Final residual = 0.0001018, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001344, Final residual = 9.277e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001635, Final residual = 9.664e-05, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.001635, Final residual = 9.663e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 4.622e-05, Final residual = 4.674e-07, No Iterations 3
 
 slove adj-flow-T
@@ -2376,43 +2376,43 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001556, Final residual = 9.916e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001309, Final residual = 9.028e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001599, Final residual = 9.451e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 4.457e-05, Final residual = 9.86e-07, No Iterations 2
+smoothSolver:  Solving for Ubz, Initial residual = 0.001599, Final residual = 9.45e-05, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 4.456e-05, Final residual = 9.86e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001536, Final residual = 9.777e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001291, Final residual = 8.899e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001581, Final residual = 9.34e-05, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.001581, Final residual = 9.339e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 4.356e-05, Final residual = 4.791e-07, No Iterations 3
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001519, Final residual = 9.667e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001275, Final residual = 8.79e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001565, Final residual = 9.246e-05, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.001565, Final residual = 9.245e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 4.278e-05, Final residual = 4.636e-07, No Iterations 3
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001501, Final residual = 9.554e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.00126, Final residual = 8.681e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001549, Final residual = 9.155e-05, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.001549, Final residual = 9.154e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 4.218e-05, Final residual = 9.128e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001482, Final residual = 9.419e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001243, Final residual = 8.558e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001243, Final residual = 8.557e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001533, Final residual = 9.052e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 4.128e-05, Final residual = 9.428e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 4.127e-05, Final residual = 9.428e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001463, Final residual = 9.293e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001227, Final residual = 8.444e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001227, Final residual = 8.443e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001517, Final residual = 8.954e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 4.038e-05, Final residual = 4.494e-07, No Iterations 3
+GAMG:  Solving for pb, Initial residual = 4.037e-05, Final residual = 4.494e-07, No Iterations 3
 
 slove adj-flow-T
 
@@ -2433,7 +2433,7 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.001414, Final residual = 8.962e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001183, Final residual = 8.134e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001477, Final residual = 8.697e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.815e-05, Final residual = 9.265e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.814e-05, Final residual = 9.265e-07, No Iterations 2
 
 slove adj-flow-T
 
@@ -2447,26 +2447,26 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.001383, Final residual = 8.751e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001156, Final residual = 7.938e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001452, Final residual = 8.535e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.674e-05, Final residual = 9.238e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.673e-05, Final residual = 9.238e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001368, Final residual = 8.65e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001143, Final residual = 7.843e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001441, Final residual = 8.461e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001143, Final residual = 7.842e-05, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.001441, Final residual = 8.46e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 3.611e-05, Final residual = 8.883e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001353, Final residual = 8.547e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.00113, Final residual = 7.748e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.00113, Final residual = 7.747e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00143, Final residual = 8.388e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 3.55e-05, Final residual = 8.506e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001338, Final residual = 8.442e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001118, Final residual = 7.655e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001118, Final residual = 7.654e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00142, Final residual = 8.315e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 3.49e-05, Final residual = 8.259e-07, No Iterations 2
 
@@ -2494,7 +2494,7 @@ GAMG:  Solving for pb, Initial residual = 3.327e-05, Final residual = 8e-07, No 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001281, Final residual = 8.054e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001071, Final residual = 7.309e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001071, Final residual = 7.308e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001382, Final residual = 8.038e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 3.283e-05, Final residual = 7.924e-07, No Iterations 2
 
@@ -2503,19 +2503,19 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.001268, Final residual = 7.96e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001059, Final residual = 7.225e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001374, Final residual = 7.973e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.245e-05, Final residual = 7.867e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.245e-05, Final residual = 7.868e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001254, Final residual = 7.867e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001049, Final residual = 7.143e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001048, Final residual = 7.142e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001366, Final residual = 7.91e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 3.212e-05, Final residual = 7.86e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001241, Final residual = 7.775e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001038, Final residual = 7.063e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001038, Final residual = 7.062e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001358, Final residual = 7.848e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 3.184e-05, Final residual = 7.878e-07, No Iterations 2
 
@@ -2524,201 +2524,201 @@ slove adj-flow-T
 smoothSolver:  Solving for Ubx, Initial residual = 0.001228, Final residual = 7.684e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001027, Final residual = 6.984e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001351, Final residual = 7.789e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.161e-05, Final residual = 7.897e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.161e-05, Final residual = 7.898e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001216, Final residual = 7.595e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.001017, Final residual = 6.907e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.001017, Final residual = 6.906e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001344, Final residual = 7.731e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.143e-05, Final residual = 7.899e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.143e-05, Final residual = 7.9e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001203, Final residual = 7.508e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.001007, Final residual = 6.83e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001337, Final residual = 7.675e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.128e-05, Final residual = 7.888e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.128e-05, Final residual = 7.889e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001191, Final residual = 7.422e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0009967, Final residual = 6.754e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0009967, Final residual = 6.753e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00133, Final residual = 7.619e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.115e-05, Final residual = 7.877e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.116e-05, Final residual = 7.877e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001178, Final residual = 7.337e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009867, Final residual = 6.678e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001323, Final residual = 7.564e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.104e-05, Final residual = 7.874e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.104e-05, Final residual = 7.875e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001166, Final residual = 7.252e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009769, Final residual = 6.604e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001317, Final residual = 7.51e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.092e-05, Final residual = 7.88e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.092e-05, Final residual = 7.881e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001154, Final residual = 7.169e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009671, Final residual = 6.531e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001311, Final residual = 7.457e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.08e-05, Final residual = 7.889e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.08e-05, Final residual = 7.89e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001142, Final residual = 7.086e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0009574, Final residual = 6.459e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0009574, Final residual = 6.458e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001305, Final residual = 7.405e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.069e-05, Final residual = 7.899e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.069e-05, Final residual = 7.9e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.00113, Final residual = 7.005e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009477, Final residual = 6.387e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001299, Final residual = 7.355e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.057e-05, Final residual = 7.909e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.057e-05, Final residual = 7.91e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001118, Final residual = 6.925e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0009381, Final residual = 6.316e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0009381, Final residual = 6.315e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001293, Final residual = 7.305e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.045e-05, Final residual = 7.919e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.045e-05, Final residual = 7.92e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001107, Final residual = 6.845e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009286, Final residual = 6.245e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001287, Final residual = 7.256e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.032e-05, Final residual = 7.924e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.032e-05, Final residual = 7.925e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001095, Final residual = 6.767e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009191, Final residual = 6.175e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001282, Final residual = 7.209e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.02e-05, Final residual = 7.92e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.02e-05, Final residual = 7.921e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001084, Final residual = 6.69e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009097, Final residual = 6.106e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001277, Final residual = 7.162e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 3.006e-05, Final residual = 7.906e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 3.006e-05, Final residual = 7.907e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001072, Final residual = 6.613e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0009003, Final residual = 6.038e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001271, Final residual = 7.116e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.992e-05, Final residual = 7.885e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.992e-05, Final residual = 7.886e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001061, Final residual = 6.538e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.000891, Final residual = 5.97e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001266, Final residual = 7.071e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.978e-05, Final residual = 7.861e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.978e-05, Final residual = 7.862e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.00105, Final residual = 6.463e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0008818, Final residual = 5.903e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001261, Final residual = 7.026e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.962e-05, Final residual = 7.837e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.963e-05, Final residual = 7.838e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001038, Final residual = 6.389e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0008726, Final residual = 5.837e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0008726, Final residual = 5.836e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001256, Final residual = 6.982e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.947e-05, Final residual = 7.817e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.947e-05, Final residual = 7.818e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001027, Final residual = 6.316e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0008635, Final residual = 5.771e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001252, Final residual = 6.938e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.931e-05, Final residual = 7.799e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.931e-05, Final residual = 7.8e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001017, Final residual = 6.244e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0008545, Final residual = 5.706e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0008544, Final residual = 5.706e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001247, Final residual = 6.895e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.914e-05, Final residual = 7.783e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.915e-05, Final residual = 7.784e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.001006, Final residual = 6.173e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0008455, Final residual = 5.642e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0008455, Final residual = 5.641e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001242, Final residual = 6.852e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.898e-05, Final residual = 7.768e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.898e-05, Final residual = 7.769e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0009952, Final residual = 6.102e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0008366, Final residual = 5.578e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001238, Final residual = 6.81e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.881e-05, Final residual = 7.756e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.881e-05, Final residual = 7.757e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0009847, Final residual = 6.033e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0008278, Final residual = 5.515e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0008277, Final residual = 5.515e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001233, Final residual = 6.768e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.864e-05, Final residual = 7.734e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.864e-05, Final residual = 7.735e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0009743, Final residual = 5.964e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.000819, Final residual = 5.453e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.000819, Final residual = 5.452e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001229, Final residual = 6.727e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.847e-05, Final residual = 7.719e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.847e-05, Final residual = 7.72e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.000964, Final residual = 5.896e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0008104, Final residual = 5.391e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0008103, Final residual = 5.391e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001224, Final residual = 6.686e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.83e-05, Final residual = 7.692e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.83e-05, Final residual = 7.693e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0009539, Final residual = 5.829e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0008018, Final residual = 5.331e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0009538, Final residual = 5.829e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0008018, Final residual = 5.33e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00122, Final residual = 6.645e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.813e-05, Final residual = 7.675e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0009439, Final residual = 5.763e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007933, Final residual = 5.271e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0007933, Final residual = 5.27e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001215, Final residual = 6.605e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.796e-05, Final residual = 7.65e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0009341, Final residual = 5.697e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.000785, Final residual = 5.212e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.000934, Final residual = 5.697e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.000785, Final residual = 5.211e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001211, Final residual = 6.565e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.779e-05, Final residual = 7.641e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.78e-05, Final residual = 7.642e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0009244, Final residual = 5.633e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0007767, Final residual = 5.153e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001207, Final residual = 6.526e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.764e-05, Final residual = 7.635e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.764e-05, Final residual = 7.636e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0009149, Final residual = 5.569e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007686, Final residual = 5.096e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0007685, Final residual = 5.095e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001202, Final residual = 6.487e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.75e-05, Final residual = 7.637e-07, No Iterations 2
 
@@ -2731,28 +2731,28 @@ GAMG:  Solving for pb, Initial residual = 2.737e-05, Final residual = 7.644e-07,
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008964, Final residual = 5.444e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0008963, Final residual = 5.444e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0007526, Final residual = 4.983e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001194, Final residual = 6.41e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.726e-05, Final residual = 7.653e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.726e-05, Final residual = 7.654e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008874, Final residual = 5.384e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007448, Final residual = 4.928e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0008873, Final residual = 5.383e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0007447, Final residual = 4.928e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00119, Final residual = 6.372e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.717e-05, Final residual = 7.664e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0008785, Final residual = 5.323e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.000737, Final residual = 4.874e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.000737, Final residual = 4.873e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001186, Final residual = 6.334e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.709e-05, Final residual = 7.675e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008699, Final residual = 5.264e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0008698, Final residual = 5.264e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.0007294, Final residual = 4.82e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001182, Final residual = 6.297e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.703e-05, Final residual = 7.688e-07, No Iterations 2
@@ -2760,91 +2760,91 @@ GAMG:  Solving for pb, Initial residual = 2.703e-05, Final residual = 7.688e-07,
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0008614, Final residual = 5.206e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007219, Final residual = 4.768e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0007219, Final residual = 4.767e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001178, Final residual = 6.26e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.698e-05, Final residual = 7.702e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.698e-05, Final residual = 7.703e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0008531, Final residual = 5.149e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007145, Final residual = 4.716e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0007144, Final residual = 4.715e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001174, Final residual = 6.224e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.694e-05, Final residual = 7.721e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.000845, Final residual = 5.092e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007072, Final residual = 4.665e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0007071, Final residual = 4.664e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00117, Final residual = 6.187e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.691e-05, Final residual = 7.743e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008371, Final residual = 5.037e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0007, Final residual = 4.615e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.000837, Final residual = 5.037e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006999, Final residual = 4.614e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001167, Final residual = 6.151e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.689e-05, Final residual = 7.769e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0008292, Final residual = 4.982e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006929, Final residual = 4.565e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006928, Final residual = 4.565e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001163, Final residual = 6.116e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.798e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008216, Final residual = 4.928e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006859, Final residual = 4.516e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0008215, Final residual = 4.928e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006858, Final residual = 4.516e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001159, Final residual = 6.08e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.828e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008141, Final residual = 4.875e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.000679, Final residual = 4.468e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.000814, Final residual = 4.875e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006789, Final residual = 4.468e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001155, Final residual = 6.045e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.86e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0008067, Final residual = 4.822e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006722, Final residual = 4.421e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0008066, Final residual = 4.822e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006722, Final residual = 4.42e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001151, Final residual = 6.011e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.892e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.891e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007994, Final residual = 4.77e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006656, Final residual = 4.374e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007993, Final residual = 4.77e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006655, Final residual = 4.374e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001147, Final residual = 5.976e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.924e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007922, Final residual = 4.719e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007921, Final residual = 4.719e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.000659, Final residual = 4.328e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001143, Final residual = 5.942e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.958e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007851, Final residual = 4.669e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006526, Final residual = 4.283e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.000785, Final residual = 4.669e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006525, Final residual = 4.283e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001139, Final residual = 5.908e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 7.993e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0007781, Final residual = 4.619e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006463, Final residual = 4.239e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006462, Final residual = 4.238e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001135, Final residual = 5.874e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 8.03e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.687e-05, Final residual = 8.029e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007712, Final residual = 4.57e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006401, Final residual = 4.195e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007712, Final residual = 4.569e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.00064, Final residual = 4.195e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001131, Final residual = 5.84e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.686e-05, Final residual = 8.068e-07, No Iterations 2
 
@@ -2852,62 +2852,62 @@ slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0007644, Final residual = 4.521e-05, No Iterations 4
 smoothSolver:  Solving for Uby, Initial residual = 0.000634, Final residual = 4.152e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001126, Final residual = 5.807e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.686e-05, Final residual = 8.108e-07, No Iterations 2
+smoothSolver:  Solving for Ubz, Initial residual = 0.001126, Final residual = 5.806e-05, No Iterations 4
+GAMG:  Solving for pb, Initial residual = 2.686e-05, Final residual = 8.107e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0007577, Final residual = 4.473e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006281, Final residual = 4.11e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.000628, Final residual = 4.109e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001122, Final residual = 5.773e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.685e-05, Final residual = 8.148e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0007511, Final residual = 4.426e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006222, Final residual = 4.068e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006222, Final residual = 4.067e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001118, Final residual = 5.74e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.684e-05, Final residual = 8.19e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.684e-05, Final residual = 8.189e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007446, Final residual = 4.379e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006165, Final residual = 4.027e-05, No Iterations 4
-smoothSolver:  Solving for Ubz, Initial residual = 0.001114, Final residual = 5.707e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007445, Final residual = 4.379e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006164, Final residual = 4.026e-05, No Iterations 4
+smoothSolver:  Solving for Ubz, Initial residual = 0.001114, Final residual = 5.706e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.683e-05, Final residual = 8.231e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007382, Final residual = 4.333e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006109, Final residual = 3.986e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007381, Final residual = 4.333e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006108, Final residual = 3.986e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.00111, Final residual = 5.673e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.682e-05, Final residual = 8.273e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.681e-05, Final residual = 8.272e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007319, Final residual = 4.287e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006054, Final residual = 3.947e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007318, Final residual = 4.287e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0006053, Final residual = 3.946e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001105, Final residual = 5.64e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.68e-05, Final residual = 8.314e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0007256, Final residual = 4.242e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0006, Final residual = 3.908e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0005999, Final residual = 3.907e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001101, Final residual = 5.607e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.679e-05, Final residual = 8.356e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.678e-05, Final residual = 8.356e-07, No Iterations 2
 
 slove adj-flow-T
 
 smoothSolver:  Solving for Ubx, Initial residual = 0.0007195, Final residual = 4.198e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0005948, Final residual = 3.869e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0005947, Final residual = 3.869e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001096, Final residual = 5.575e-05, No Iterations 4
-GAMG:  Solving for pb, Initial residual = 2.677e-05, Final residual = 8.398e-07, No Iterations 2
+GAMG:  Solving for pb, Initial residual = 2.677e-05, Final residual = 8.397e-07, No Iterations 2
 
 slove adj-flow-T
 
-smoothSolver:  Solving for Ubx, Initial residual = 0.0007135, Final residual = 4.154e-05, No Iterations 4
-smoothSolver:  Solving for Uby, Initial residual = 0.0005896, Final residual = 3.832e-05, No Iterations 4
+smoothSolver:  Solving for Ubx, Initial residual = 0.0007134, Final residual = 4.154e-05, No Iterations 4
+smoothSolver:  Solving for Uby, Initial residual = 0.0005896, Final residual = 3.831e-05, No Iterations 4
 smoothSolver:  Solving for Ubz, Initial residual = 0.001092, Final residual = 5.542e-05, No Iterations 4
 GAMG:  Solving for pb, Initial residual = 2.675e-05, Final residual = 8.44e-07, No Iterations 2
 
@@ -3128,7 +3128,7 @@ run mmasub
 
  Heaviside_rho
 
-ExecutionTime = 107.8 s  ClockTime = 110 s
+ExecutionTime = 108.9 s  ClockTime = 110 s
 
 End
 
