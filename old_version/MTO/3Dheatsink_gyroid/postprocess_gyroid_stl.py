@@ -53,7 +53,6 @@ from pathlib import Path
 
 import numpy as np
 from scipy.interpolate import RBFInterpolator, RegularGridInterpolator
-from scipy.ndimage import label, binary_erosion, binary_dilation
 from scipy.spatial import KDTree
 
 # ── scikit-image ──────────────────────────────────────────────────────────────
@@ -219,7 +218,7 @@ def build_sdf_from_ctrl(
     k_base:         float,
     half_thickness: float,
     voxel_size:     float,
-) -> tuple[np.ndarray, np.ndarray, tuple]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Build a voxel SDF from RBF control-point frequency perturbations.
     Uses the baked trilinear RBF field (same as the optimizer) to avoid the
@@ -251,102 +250,7 @@ def build_sdf_from_ctrl(
     print(f"  Solid voxel fraction: {frac:.4f}  "
           f"({int((sdf > 0).sum()):,} of {nx*ny*nz:,} voxels)")
 
-    padded, origin = pad_and_origin(sdf, voxel_size)
-    return padded, origin, (voxel_size, voxel_size, voxel_size)
-
-
-# ── morphological post-processing ────────────────────────────────────────────
-
-def helmholtz_filter_fft(
-    gamma: np.ndarray,   # (nx,ny,nz) float64
-    r_cells: float,      # filter radius in grid cells
-) -> np.ndarray:
-    """
-    Solve  -r_cells² ∇²γ̃ + γ̃ = γ  via FFT on the uniform periodic grid.
-
-    The discrete Laplacian eigenvalues are:
-        λ(k) = 2*(cos(2π kx/nx)-1) + 2*(cos(2π ky/ny)-1) + 2*(cos(2π kz/nz)-1)
-    Since λ ≤ 0 everywhere, (1 - r²λ) ≥ 1 and the system is always invertible.
-    """
-    nx, ny, nz = gamma.shape
-    kx = np.arange(nx); ky = np.arange(ny); kz = np.arange(nz)
-    KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing='ij')
-    lam = (2*(np.cos(2*np.pi*KX/nx) - 1)
-         + 2*(np.cos(2*np.pi*KY/ny) - 1)
-         + 2*(np.cos(2*np.pi*KZ/nz) - 1))          # ≤ 0
-    denom = 1.0 - r_cells**2 * lam                  # ≥ 1
-    gamma_tilde = np.real(np.fft.ifftn(np.fft.fftn(gamma) / denom))
-    return np.clip(gamma_tilde, 0.0, 1.0)
-
-
-def _ball_struct(r_cells: float) -> np.ndarray:
-    """Return a boolean 3-D ball structuring element of radius r_cells."""
-    r = max(1, int(np.ceil(r_cells)))
-    i = np.arange(-r, r+1)
-    I, J, K = np.meshgrid(i, i, i, indexing='ij')
-    return (I**2 + J**2 + K**2) <= r**2
-
-
-def morpho_clean_solid(
-    gamma_3d:   np.ndarray,   # (nx,ny,nz) float32, 0=solid / 1=fluid (OF convention)
-    cell_size:  float,        # mm (uniform)
-    t_min:      float,        # minimum wall thickness (mm)
-    beta:       float = 8.0,  # Heaviside sharpness
-    eta:        float = 0.5,  # erosion threshold
-    close_gaps: bool  = False,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Erosion–dilation post-processing pipeline (see module docstring / user spec).
-
-    Returns
-    -------
-    gamma_tilde : (nx,ny,nz) float64 — smooth Helmholtz-filtered field (OF
-                  convention: 0=solid, 1=fluid), for smooth marching-cubes surface.
-    solid_clean : (nx,ny,nz) bool   — binary clean solid mask (True=solid).
-    """
-    # Invert to spec convention (1=solid, 0=fluid) for filtering/projection
-    g = 1.0 - gamma_3d.astype(np.float64)
-
-    # Step 1-2: filter radius and Helmholtz filter
-    r_cells = (t_min / 2.0) / cell_size
-    print(f"  Helmholtz filter: t_min={t_min} mm  r={t_min/2:.3f} mm  "
-          f"r_cells={r_cells:.2f}")
-    g_tilde = helmholtz_filter_fft(g, r_cells)
-
-    # Step 3-5: smooth erosion projection (P(x) ≥ 0.5 iff x ≥ 0)
-    #   γ_ero = 0.5*(tanh(β*(g̃ - η)) + 1)  ≥ 0.5  ↔  g̃ ≥ η
-    g_ero   = 0.5 * (np.tanh(beta * (g_tilde - eta)) + 1.0)
-    solid_raw = g_ero >= 0.5                        # bool (nx,ny,nz)
-
-    n_raw = solid_raw.sum()
-    print(f"  After erosion: {n_raw:,} solid voxels  "
-          f"({n_raw / solid_raw.size:.4f} fraction)")
-
-    # Step 6: remove floating features — keep largest connected component
-    labeled, n_comp = label(solid_raw)
-    print(f"  Connected components: {n_comp}")
-    if n_comp > 1:
-        comp_sizes = np.bincount(labeled.ravel())[1:]   # index 0 = background
-        largest    = int(comp_sizes.argmax()) + 1
-        solid_clean = (labeled == largest)
-        removed_vox = n_raw - solid_clean.sum()
-        print(f"  Kept component #{largest}  "
-              f"({solid_clean.sum():,} voxels, removed {removed_vox:,})")
-    else:
-        solid_clean = solid_raw.copy()
-
-    # Step 7: optional gap closing (one erosion + one dilation)
-    if close_gaps:
-        struct = _ball_struct(r_cells)
-        print(f"  Gap closing: ball r={int(np.ceil(r_cells))} cells …")
-        solid_clean = binary_dilation(
-            binary_erosion(solid_clean, structure=struct, border_value=0),
-            structure=struct, border_value=0,
-        )
-
-    # Return smooth filtered field in OF convention for marching cubes
-    gamma_tilde_of = 1.0 - g_tilde                 # back to 0=solid, 1=fluid
-    return gamma_tilde_of.astype(np.float32), solid_clean
+    return pad_and_origin(sdf, voxel_size)
 
 
 # ── mode: gamma ───────────────────────────────────────────────────────────────
@@ -355,25 +259,20 @@ def build_sdf_from_gamma(
     gamma_path:  Path,
     case_dir:    Path,
     voxel_size:  float,
-    t_min:       float = F_WALL_THICKNESS,
-    beta:        float = 8.0,
-    eta:         float = 0.5,
-    close_gaps:  bool  = False,
-) -> tuple[np.ndarray, np.ndarray, tuple]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Load gamma from OpenFOAM, recover the structured hex grid, apply the
-    erosion–dilation morphological pipeline, and return a padded SDF ready
-    for marching cubes.
+    Interpolate the OpenFOAM gamma field onto a regular voxel grid.
 
-    When the structured grid is detected the pipeline is:
-      1. Helmholtz filter (FFT) with r = t_min/2
-      2. Smooth erosion projection
-      3. Connected-component cleanup (largest component kept)
-      4. Optional gap closing
-      5. SDF = (eta - gamma_tilde) masked to clean solid → marching cubes
-         on the smooth filtered surface (not on the blocky binary mask).
+    Strategy: recover the structured hex grid that blockMesh produced by
+    finding the unique x/y/z cell-centre coordinates, rebuild the 3-D gamma
+    array on that native grid, then use RegularGridInterpolator (trilinear)
+    to resample to the desired voxel spacing.  This is exact — it only
+    interpolates between grid-adjacent cells (one cell-width apart) and
+    faithfully reproduces thin walls.
 
-    Falls back to nearest-neighbour + simple threshold for unstructured meshes.
+    Falls back to KD-tree nearest-neighbour if the mesh is unstructured.
+
+    sdf = 0.5 - gamma  →  positive inside solid (gamma < 0.5).
     """
     # ── cell centres ──────────────────────────────────────────────────────
     cc_cache = case_dir / 'cell_centers_mm.npy'
@@ -394,68 +293,55 @@ def build_sdf_from_gamma(
     print(f"  gamma range [{gamma.min():.4f}, {gamma.max():.4f}]  "
           f"solid_frac (gamma<0.5) = {(gamma < 0.5).mean():.4f}")
 
-    # ── recover structured grid (filter to opt domain first) ──────────────
-    # The OpenFOAM mesh extends into inlet/outlet regions; only the opt-domain
-    # cells form a perfect structured hex grid.
-    dec = 3
-    opt_mask = ((cc_mm[:, 0] >= OPT_XMIN) & (cc_mm[:, 0] <= OPT_XMAX) &
-                (cc_mm[:, 1] >= OPT_YMIN) & (cc_mm[:, 1] <= OPT_YMAX) &
-                (cc_mm[:, 2] >= OPT_ZMIN) & (cc_mm[:, 2] <= OPT_ZMAX))
-    cc_opt    = cc_mm[opt_mask]
-    gamma_opt = gamma[opt_mask]
-
-    xu = np.unique(np.round(cc_opt[:, 0], dec))
-    yu = np.unique(np.round(cc_opt[:, 1], dec))
-    zu = np.unique(np.round(cc_opt[:, 2], dec))
+    # ── recover structured grid from cell centres ──────────────────────────
+    dec = 4   # rounding decimals for grouping (avoids float noise)
+    xu = np.unique(np.round(cc_mm[:, 0], dec))
+    yu = np.unique(np.round(cc_mm[:, 1], dec))
+    zu = np.unique(np.round(cc_mm[:, 2], dec))
     n_expected = len(xu) * len(yu) * len(zu)
-    structured = abs(n_expected - len(cc_opt)) / len(cc_opt) < 0.01
+    structured = abs(n_expected - n_cells) / n_cells < 0.01
 
     if structured:
-        dx = xu[1] - xu[0]; dy = yu[1] - yu[0]; dz = zu[1] - zu[0]
-        print(f"  Structured grid (opt domain): {len(xu)}×{len(yu)}×{len(zu)} "
-              f"= {n_expected:,}  cell size {dx:.4f}×{dy:.4f}×{dz:.4f} mm")
+        print(f"  Structured grid: {len(xu)}×{len(yu)}×{len(zu)} "
+              f"= {n_expected:,}  (cell size ≈ "
+              f"{xu[1]-xu[0]:.3f}×{yu[1]-yu[0]:.3f}×{zu[1]-zu[0]:.3f} mm)")
 
+        # Map each cell to its (i,j,k) index and fill gamma_3d
         gamma_3d = np.ones((len(xu), len(yu), len(zu)), dtype=np.float32)
-        xi = np.clip(np.searchsorted(xu, np.round(cc_opt[:, 0], dec)), 0, len(xu)-1)
-        yi = np.clip(np.searchsorted(yu, np.round(cc_opt[:, 1], dec)), 0, len(yu)-1)
-        zi = np.clip(np.searchsorted(zu, np.round(cc_opt[:, 2], dec)), 0, len(zu)-1)
-        gamma_3d[xi, yi, zi] = gamma_opt.astype(np.float32)
+        xi = np.searchsorted(xu, np.round(cc_mm[:, 0], dec))
+        yi = np.searchsorted(yu, np.round(cc_mm[:, 1], dec))
+        zi = np.searchsorted(zu, np.round(cc_mm[:, 2], dec))
+        xi = np.clip(xi, 0, len(xu) - 1)
+        yi = np.clip(yi, 0, len(yu) - 1)
+        zi = np.clip(zi, 0, len(zu) - 1)
+        gamma_3d[xi, yi, zi] = gamma.astype(np.float32)
 
-        # ── morphological pipeline ─────────────────────────────────────────
-        # cell_size is uniform (dx == dy == dz confirmed above)
-        gamma_tilde, solid_clean = morpho_clean_solid(
-            gamma_3d, cell_size=dx,
-            t_min=t_min, beta=beta, eta=eta, close_gaps=close_gaps,
+        print("  Trilinear interpolation to voxel grid …")
+        interp = RegularGridInterpolator(
+            (xu, yu, zu), gamma_3d,
+            method='linear', bounds_error=False, fill_value=1.0,
         )
-        print(f"  Final solid: {solid_clean.sum():,} voxels  "
-              f"({solid_clean.mean():.4f} fraction)")
-
-        # SDF on the smooth filtered field, zeroed outside clean solid.
-        # Marching cubes at level 0 → smooth gyroid surface, no fragments.
-        sdf = (eta - gamma_tilde).astype(np.float32)   # >0 inside solid
-        sdf[~solid_clean] = -1.0                        # force fluid outside
-
-        padded = np.pad(sdf, pad_width=1, mode='constant', constant_values=-1.0)
-        origin = np.array([xu[0] - dx, yu[0] - dy, zu[0] - dz])
-        return padded, origin, (dx, dy, dz)
-
-    else:
-        print(f"  Unstructured mesh — falling back to nearest-neighbour at {voxel_size} mm")
         xs, ys, zs, X, Y, Z, pts = make_grid(voxel_size)
         nx, ny, nz = len(xs), len(ys), len(zs)
-        print(f"  Voxel grid: {nx}×{ny}×{nz} = {nx*ny*nz:,}")
+        print(f"  Grid: {nx}×{ny}×{nz} = {nx*ny*nz:,} voxels at {voxel_size} mm")
+        gamma_grid = interp(pts).reshape(nx, ny, nz).astype(np.float32)
+
+    else:
+        print(f"  Unstructured mesh detected — falling back to nearest-neighbour")
+        xs, ys, zs, X, Y, Z, pts = make_grid(voxel_size)
+        nx, ny, nz = len(xs), len(ys), len(zs)
+        print(f"  Grid: {nx}×{ny}×{nz} = {nx*ny*nz:,} voxels at {voxel_size} mm")
         tree = KDTree(cc_mm)
         _, idxs = tree.query(pts, workers=-1)
         gamma_grid = gamma[idxs].reshape(nx, ny, nz).astype(np.float32)
-        sdf  = (0.5 - gamma_grid).astype(np.float32)
-        frac = float((sdf > 0).mean())
-        print(f"  Solid voxel fraction: {frac:.4f}  "
-              f"({int((sdf > 0).sum()):,} of {nx*ny*nz:,} voxels)")
-        padded = np.pad(sdf, pad_width=1, mode='constant', constant_values=-1.0)
-        origin = np.array([OPT_XMIN - voxel_size,
-                           OPT_YMIN - voxel_size,
-                           OPT_ZMIN - voxel_size])
-        return padded, origin, (voxel_size, voxel_size, voxel_size)
+
+    # sdf > 0 inside solid, < 0 in fluid
+    sdf  = (0.5 - gamma_grid).astype(np.float32)
+    frac = float((sdf > 0).mean())
+    print(f"  Solid voxel fraction: {frac:.4f}  "
+          f"({int((sdf > 0).sum()):,} of {nx*ny*nz:,} voxels)")
+
+    return pad_and_origin(sdf, voxel_size)
 
 
 # ── marching cubes + component filter + export ────────────────────────────────
@@ -463,14 +349,14 @@ def build_sdf_from_gamma(
 def mesh_and_export(
     padded:       np.ndarray,
     origin:       np.ndarray,
-    spacing:      tuple,        # (dx, dy, dz) in mm
+    voxel_size:   float,
     stl_path:     Path,
     min_vol_frac: float,
 ) -> None:
     print("  Running marching cubes …")
     verts, faces, _n, _v = marching_cubes(
         padded, level=0.0,
-        spacing=spacing,
+        spacing=(voxel_size, voxel_size, voxel_size),
     )
     verts += origin
     print(f"  Raw mesh: {len(verts):,} vertices, {len(faces):,} triangles")
@@ -543,15 +429,6 @@ def main() -> None:
                         help='Wall thickness in mm (ctrl modes only).')
     parser.add_argument('--min-vol-frac', type=float, default=0.01,
                         help='Remove components with volume < this fraction of largest.')
-    # ── gamma-mode morphological processing ───────────────────────────────
-    parser.add_argument('--t-min', type=float, default=F_WALL_THICKNESS,
-                        help='Minimum wall thickness for morpho pipeline (mm). '
-                             'Default = wall thickness from optimizer.')
-    parser.add_argument('--beta', type=float, default=8.0,
-                        help='Heaviside sharpness β for erosion projection.')
-    parser.add_argument('--close-gaps', action='store_true',
-                        help='Apply one erosion + dilation after component cleanup '
-                             'to close small internal gaps.')
     args = parser.parse_args()
 
     case_dir = (_SCRIPT_DIR / args.case).resolve()
@@ -569,10 +446,8 @@ def main() -> None:
                 "or specify a different --gamma-time."
             )
         print(f"\nMode: gamma  ({gamma_path})")
-        padded, origin, spacing = build_sdf_from_gamma(
+        padded, origin = build_sdf_from_gamma(
             gamma_path, case_dir, args.voxel,
-            t_min=args.t_min, beta=args.beta, eta=0.5,
-            close_gaps=args.close_gaps,
         )
 
     else:
@@ -596,11 +471,11 @@ def main() -> None:
               f"max |dk| = {np.abs(dk_ctrl).max():.4f} rad/mm")
 
         k_base = 2.0 * math.pi / args.unit
-        padded, origin, spacing = build_sdf_from_ctrl(
+        padded, origin = build_sdf_from_ctrl(
             ctrl_pts, dk_ctrl, k_base, 0.5 * args.wall, args.voxel
         )
 
-    mesh_and_export(padded, origin, spacing, stl_path, args.min_vol_frac)
+    mesh_and_export(padded, origin, args.voxel, stl_path, args.min_vol_frac)
     print(f"\nTotal time : {time.time() - t0:.1f} s")
     print(f"STL written: {stl_path}")
 

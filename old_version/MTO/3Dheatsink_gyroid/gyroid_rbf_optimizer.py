@@ -57,6 +57,8 @@ from scipy.interpolate import RBFInterpolator
 from scipy.optimize import minimize
 from scipy.special import expit  # numerically stable sigmoid
 
+from am_constraints import AMConstraints
+
 # ── Physical / geometry parameters ─────────────────────────────────────────────
 # blockMeshDict uses convertToMeters 0.01  →  mesh coords in metres
 MESH_UNIT_TO_MM = 10.0        # 0.01 m * 1000 mm/m  (mesh unit → mm)
@@ -68,7 +70,7 @@ OPT_ZMIN, OPT_ZMAX = 0.0, 10.0
 
 # Gyroid TPMS parameters
 F_UNIT_SIZE      = 1.5    # TPMS cell size (mm) – sets base frequency k_base
-F_WALL_THICKNESS = 0.20   # solid wall thickness (mm)
+F_WALL_THICKNESS = 0.30   # solid wall thickness (mm)
 SDF_EPSILON      = 0.04   # smooth-Heaviside sharpness (mm)
 
 # RBF control-point grid
@@ -488,42 +490,169 @@ def chain_rule_gradient(
 
 # ── OpenFOAM runner ────────────────────────────────────────────────────────────
 
+def _run_cmd(cmd: list[str], cwd: str,
+             log_path: Path | None = None,
+             capture: bool = False,
+             mpi: bool = False,
+             timeout: int = 7200,
+             env: dict | None = None) -> subprocess.CompletedProcess:
+    """
+    Run a command, optionally writing stdout+stderr to log_path.
+
+    mpi=True  → start_new_session=True (detaches from controlling terminal;
+                 required for mpirun to function correctly in non-interactive
+                 sessions; with setsid the new PID == PGID so we can still
+                 killpg on cleanup).
+    mpi=False → capture=True/False as requested, no special session handling.
+    """
+    kwargs: dict = dict(cwd=cwd)
+    if env is not None:
+        kwargs['env'] = env
+
+    if mpi:
+        # setsid: new session, no controlling terminal, new process group.
+        # proc.pid == pgid after setsid, so killpg(proc.pid, 9) kills all ranks.
+        kwargs['start_new_session'] = True
+    else:
+        # For short-lived helpers (decomposePar, reconstructPar) just inherit session.
+        pass
+
+    if capture:
+        kwargs['stdout'] = subprocess.PIPE
+        kwargs['stderr'] = subprocess.PIPE
+        lf = None
+    elif log_path is not None:
+        lf = open(log_path, 'wb')
+        kwargs['stdout'] = lf
+        kwargs['stderr'] = subprocess.STDOUT
+    else:
+        lf = None
+
+    proc = subprocess.Popen(cmd, **kwargs)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt, Exception):
+        # Kill job: with start_new_session proc.pid IS the pgid.
+        # For non-mpi procs fall back to plain terminate.
+        try:
+            if mpi:
+                os.killpg(proc.pid, 9)
+            else:
+                proc.kill()
+        except (ProcessLookupError, PermissionError):
+            pass
+        proc.wait()
+        if lf:
+            lf.close()
+        raise
+    finally:
+        if lf:
+            lf.close()
+
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode,
+        stdout=stdout, stderr=stderr,
+    )
+
+
+def _kill_mpi_orphans(solver: str = 'MTO_TF') -> None:
+    """Kill any leftover solver / MPI processes from a previous crashed run."""
+    for name in (solver, 'orted', 'orterun'):
+        subprocess.run(['pkill', '-SIGTERM', name],
+                       capture_output=True)
+    time.sleep(0.5)
+    # Remove stale OpenMPI session files that block new connections
+    import glob
+    for p in glob.glob('/tmp/ompi.*') + glob.glob('/tmp/openmpi-sessions-*'):
+        try:
+            shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+        except OSError:
+            pass
+
+
+def _mpirun_is_healthy(solver: str = 'MTO_TF', probe_timeout: float = 8.0) -> bool:
+    """
+    Quick sanity-check: launch 'mpirun -n 1 hostname' and confirm it produces
+    output within probe_timeout seconds.  Returns False if mpirun hangs.
+    """
+    try:
+        devnull = open(os.devnull, 'rb')
+        proc = subprocess.Popen(
+            ['mpirun', '--oversubscribe', '-n', '1', 'hostname'],
+            stdin=devnull, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        devnull.close()
+        try:
+            out, _ = proc.communicate(timeout=probe_timeout)
+            return proc.returncode == 0 and len(out.strip()) > 0
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, 9)
+            except OSError:
+                pass
+            proc.wait()
+            return False
+    except Exception:
+        return False
+
+
 def run_openfoam_one_step(case_dir: Path,
                           start_time: int,
                           end_time: int,
                           solver: str = 'MTO_TF',
                           n_procs: int = 1,
-                          iter_num: int = 0) -> None:
-    """Run the MTO_TF solver for exactly (end_time - start_time) outer iterations."""
+                          iter_num: int = 0,
+                          solver_timeout: int = 7200) -> None:
+    """
+    Run the MTO_TF solver for exactly (end_time - start_time) outer iterations.
+    If n_procs > 1 but mpirun is unresponsive, falls back to serial automatically.
+    """
     system_dir = case_dir / 'system'
     update_control_dict(system_dir, start_time, end_time, write_interval=1)
     cwd = str(case_dir)
 
-    if n_procs > 1:
+    # Auto-detect mpirun health on first parallel attempt
+    use_parallel = n_procs > 1
+    if use_parallel and iter_num == 1:
+        print("  Probing mpirun … ", end='', flush=True)
+        if _mpirun_is_healthy(solver):
+            print("OK")
+        else:
+            print("HUNG – falling back to serial for all iterations")
+            use_parallel = False
+            # Persist the fallback decision so later iterations skip the probe
+            _mpirun_fallback_flag = case_dir / '.mpirun_broken'
+            _mpirun_fallback_flag.touch()
+
+    # Check persistent fallback flag (set by iter 1 or a previous session)
+    if use_parallel and (case_dir / '.mpirun_broken').exists():
+        use_parallel = False
+
+    if use_parallel:
+        # Clean up any orphan processes / stale MPI state before starting
+        _kill_mpi_orphans(solver)
+
         print(f"  decomposePar (time {start_time}) …")
-        r = subprocess.run(
+        r = _run_cmd(
             ['decomposePar', '-time', str(start_time), '-force', '-case', str(case_dir)],
-            capture_output=True, cwd=cwd
+            cwd=cwd, capture=True,
         )
         if r.returncode != 0:
             log = case_dir / f'log.decomposePar.iter{iter_num:03d}'
-            log.write_bytes(r.stdout + b'\n' + r.stderr)
+            log.write_bytes((r.stdout or b'') + b'\n' + (r.stderr or b''))
             raise RuntimeError(
                 f"decomposePar failed (exit {r.returncode}). Log: {log}\n"
-                + r.stderr.decode(errors='replace')[-2000:]
+                + (r.stderr or b'').decode(errors='replace')[-2000:]
             )
 
         log_path = case_dir / f'log.{solver}.iter{iter_num:03d}'
         print(f"  mpirun -n {n_procs} {solver} … (log → {log_path.name})")
-        time.sleep(3)   # let MPI socket state from previous run clear (prevents SIGPIPE)
-        with open(log_path, 'wb') as lf:
-            r = subprocess.run(
-                ['mpirun', '--oversubscribe', '-n', str(n_procs),
-                 solver, '-parallel', '-case', str(case_dir)],
-                stdout=lf, stderr=subprocess.STDOUT,
-                cwd=cwd,
-                start_new_session=True,
-            )
+        r = _run_cmd(
+            ['mpirun', '--oversubscribe', '-n', str(n_procs),
+             solver, '-parallel', '-case', str(case_dir)],
+            cwd=cwd, log_path=log_path, mpi=True, timeout=solver_timeout,
+        )
         if r.returncode != 0:
             tail = log_path.read_bytes()[-4000:].decode(errors='replace')
             raise RuntimeError(
@@ -532,23 +661,33 @@ def run_openfoam_one_step(case_dir: Path,
             )
 
         print(f"  reconstructPar (time {end_time}) …")
-        r = subprocess.run(
+        r = _run_cmd(
             ['reconstructPar', '-time', str(end_time), '-case', str(case_dir)],
-            capture_output=True, cwd=cwd
+            cwd=cwd, capture=True,
         )
         if r.returncode != 0:
             log = case_dir / f'log.reconstructPar.iter{iter_num:03d}'
-            log.write_bytes(r.stdout + b'\n' + r.stderr)
+            log.write_bytes((r.stdout or b'') + b'\n' + (r.stderr or b''))
             raise RuntimeError(
                 f"reconstructPar failed (exit {r.returncode}). Log: {log}\n"
-                + r.stderr.decode(errors='replace')[-2000:]
+                + (r.stderr or b'').decode(errors='replace')[-2000:]
             )
     else:
-        print(f"  Running {solver} (serial) for t={start_time}→{end_time} …")
-        result = subprocess.run([solver, '-case', str(case_dir)],
-                                capture_output=False, cwd=cwd)
-        if result.returncode != 0:
-            raise RuntimeError(f"{solver} exited with code {result.returncode}")
+        # Serial mode: MTO_TF is MPI-compiled so it needs MPI symbols even with nProcs=1.
+        # If the real mpirun is broken, inject a single-process MPI shim via LD_PRELOAD.
+        shim = Path(__file__).parent / 'fake_mpi.so'
+        env  = None
+        if shim.exists():
+            import os as _os
+            env = _os.environ.copy()
+            existing = env.get('LD_PRELOAD', '')
+            env['LD_PRELOAD'] = (str(shim) + ':' + existing).strip(':')
+
+        print(f"  Running {solver} (serial+MPI-shim) for t={start_time}→{end_time} …")
+        r = _run_cmd([solver, '-case', str(case_dir)], cwd=cwd,
+                     timeout=solver_timeout, env=env)
+        if r.returncode != 0:
+            raise RuntimeError(f"{solver} exited with code {r.returncode}")
 
 
 def read_objective(case_dir: Path) -> tuple[float, float]:
@@ -584,6 +723,15 @@ class GyroidRBFOptimizer:
         solver:          str   = 'MTO_TF',
         n_procs:         int   = 1,
         of_binary:       str   = 'postProcess',
+        # ── AM constraint options ──────────────────────────────────────────────
+        am_r_filter:     float = 0.15,   # Helmholtz filter radius (mm)
+        am_theta_max:    float = math.pi / 4.0,
+        am_P_bar:        float = 0.01,
+        am_Phi_o:        float = 0.01,
+        am_mu_overhang:  float = 1.0,
+        am_mu_thickness: float = 10.0,
+        use_overhang:    bool  = True,
+        use_thickness:   bool  = True,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -629,7 +777,24 @@ class GyroidRBFOptimizer:
 
         self.bounds = [(-k_amp_bound, k_amp_bound)] * (self.n_ctrl * 3)
 
-        print(f"Optimiser ready. {self.n_ctrl * 3} design variables "
+        # ── AM constraints ────────────────────────────────────────────────────
+        if use_overhang or use_thickness:
+            print("\nBuilding AM constraint operators …")
+            self.am = AMConstraints(
+                pts_mm          = self.cell_centers_mm,
+                r_filter_mm     = am_r_filter,
+                theta_max       = am_theta_max,
+                P_bar           = am_P_bar,
+                Phi_o           = am_Phi_o,
+                mu_overhang     = am_mu_overhang,
+                mu_thickness    = am_mu_thickness,
+                use_overhang    = use_overhang,
+                use_thickness   = use_thickness,
+            )
+        else:
+            self.am = None
+
+        print(f"\nOptimiser ready. {self.n_ctrl * 3} design variables "
               f"(±{k_amp_bound:.4f} rad/mm each).\n")
 
     # ── internals ─────────────────────────────────────────────────────────────
@@ -709,8 +874,24 @@ class GyroidRBFOptimizer:
                 self._fsens_ref = 1.0
         fsens_norm = fsens / self._fsens_ref
 
+        # ── AM constraint penalties ───────────────────────────────────────────
+        am_info = {}
+        J_aug   = float(meanT)
+        if self.am is not None:
+            J_aug, fsens_aug, am_info = self.am.apply(
+                gamma, J_aug, fsens_norm, iteration=self._iter,
+            )
+            self.am.update_penalties(am_info)
+            print(f"  g_overhang = {am_info.get('g_oh', 0.0):.4g}  "
+                  f"(limit {self.am.P_bar:.3g}, pen={am_info.get('pen_oh',0):.3g})")
+            print(f"  g_thickness= {am_info.get('g_th', 0.0):.4g}  "
+                  f"(limit {self.am.Phi_o:.3g}, pen={am_info.get('pen_th',0):.3g})  "
+                  f"β_proj={am_info.get('beta_proj',1):.1f}")
+        else:
+            fsens_aug = fsens_norm
+
         grad_ctrl = chain_rule_gradient(
-            fsens_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
+            fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
         )                                            # (N_ctrl, 3)
         grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
 
@@ -719,22 +900,30 @@ class GyroidRBFOptimizer:
               f"fsens_ref = {self._fsens_ref:.4g}")
 
         self._history.append(dict(
-            iter=self._iter, J=meanT, dissPower=dissPower, vol=vol_use,
-            grad_norm=float(np.linalg.norm(grad_flat)), elapsed=elapsed
+            iter=self._iter, J=meanT, J_aug=J_aug,
+            dissPower=dissPower, vol=vol_use,
+            g_oh=am_info.get('g_oh', 0.0),
+            g_th=am_info.get('g_th', 0.0),
+            grad_norm=float(np.linalg.norm(grad_flat)), elapsed=elapsed,
         ))
         self._save_history()
         self.save_ctrl_pts(x, tag='_checkpoint')   # always overwritten; safe restart point
 
-        return float(meanT), grad_flat
+        return J_aug, grad_flat
 
     def _save_history(self) -> None:
         hist_path = self.case_dir / 'gyroid_opt_history.txt'
         with open(hist_path, 'w') as f:
-            f.write("iter  J_meanT      DissPower    solid_frac  grad_norm  elapsed_s\n")
+            f.write("iter  J_meanT      J_aug        DissPower    solid_frac  "
+                    "g_oh      g_th      grad_norm  elapsed_s\n")
             for h in self._history:
                 f.write(f"{h['iter']:4d}  {h['J']:12.6g}  "
+                        f"{h.get('J_aug', h['J']):12.6g}  "
                         f"{h.get('dissPower', float('nan')):12.6g}  "
-                        f"{h['vol']:10.4f}  {h['grad_norm']:10.4g}  "
+                        f"{h['vol']:10.4f}  "
+                        f"{h.get('g_oh', 0.0):9.4g}  "
+                        f"{h.get('g_th', 0.0):9.4g}  "
+                        f"{h['grad_norm']:10.4g}  "
                         f"{h['elapsed']:8.1f}\n")
 
     def save_ctrl_pts(self, x: np.ndarray, tag: str = '') -> None:
@@ -832,6 +1021,23 @@ def main() -> None:
                         help='Path to gyroid_ctrl_pts.txt for warm-start')
     parser.add_argument('--postprocess', default='postProcess',
                         help='OpenFOAM postProcess binary (default: postProcess)')
+    # ── AM constraint arguments ────────────────────────────────────────────────
+    parser.add_argument('--am-filter',    type=float, default=0.15,
+                        help='Helmholtz filter radius in mm (default: 0.15)')
+    parser.add_argument('--am-theta',     type=float, default=45.0,
+                        help='Max overhang angle in degrees (default: 45)')
+    parser.add_argument('--am-P-bar',     type=float, default=0.01,
+                        help='Overhang constraint bound (default: 0.01)')
+    parser.add_argument('--am-Phi-o',     type=float, default=0.01,
+                        help='Thickness constraint bound (default: 0.01)')
+    parser.add_argument('--mu-overhang',  type=float, default=1.0,
+                        help='Initial penalty weight for overhang (default: 1.0)')
+    parser.add_argument('--mu-thickness', type=float, default=10.0,
+                        help='Initial penalty weight for thickness (default: 10.0)')
+    parser.add_argument('--no-overhang',  action='store_true',
+                        help='Disable the overhang angle constraint')
+    parser.add_argument('--no-thickness', action='store_true',
+                        help='Disable the wall-thickness constraint')
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
@@ -851,6 +1057,14 @@ def main() -> None:
         solver          = args.solver,
         n_procs         = args.parallel,
         of_binary       = args.postprocess,
+        am_r_filter     = args.am_filter,
+        am_theta_max    = math.radians(args.am_theta),
+        am_P_bar        = args.am_P_bar,
+        am_Phi_o        = args.am_Phi_o,
+        am_mu_overhang  = args.mu_overhang,
+        am_mu_thickness = args.mu_thickness,
+        use_overhang    = not args.no_overhang,
+        use_thickness   = not args.no_thickness,
     )
     opt.run(n_iters=args.iters, load_ctrl=warm)
 
