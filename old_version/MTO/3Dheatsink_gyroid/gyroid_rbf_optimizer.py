@@ -672,6 +672,9 @@ def run_openfoam_one_step(case_dir: Path,
                 f"reconstructPar failed (exit {r.returncode}). Log: {log}\n"
                 + (r.stderr or b'').decode(errors='replace')[-2000:]
             )
+        
+        # Immediately backup the unified time directory before any potential cleanup
+        backup_latest_fluid_state(case_dir)
     else:
         # Serial mode: MTO_TF is MPI-compiled so it needs MPI symbols even with nProcs=1.
         # If the real mpirun is broken, inject a single-process MPI shim via LD_PRELOAD.
@@ -688,6 +691,9 @@ def run_openfoam_one_step(case_dir: Path,
                      timeout=solver_timeout, env=env)
         if r.returncode != 0:
             raise RuntimeError(f"{solver} exited with code {r.returncode}")
+        
+        # Immediately backup the time directory before any potential cleanup
+        backup_latest_fluid_state(case_dir)
 
 
 def read_objective(case_dir: Path) -> tuple[float, float]:
@@ -699,6 +705,91 @@ def read_objective(case_dir: Path) -> tuple[float, float]:
         lines = [l.strip() for l in p.read_text().splitlines() if l.strip()]
         return float(lines[-1]) if lines else float('nan')
     return _last('meanT.txt'), _last('Disspower.txt')
+
+
+def backup_latest_fluid_state(case_dir: Path, backup_dir: Path | None = None) -> Path:
+    """
+    Copy the latest time-step output directory to a persistent backup location.
+    Always overwrites the backup, ensuring there is always a saved fluid state.
+    
+    Parameters
+    ----------
+    case_dir : Path
+        OpenFOAM case directory
+    backup_dir : Path | None
+        Backup directory name (default: case_dir / 'latest_fluid_state')
+        
+    Returns
+    -------
+    Path
+        Path to the backed-up time directory
+    """
+    if backup_dir is None:
+        backup_dir = case_dir / 'latest_fluid_state'
+
+    latest_time = get_latest_time(case_dir)
+    if latest_time == 0:
+        print(f"  WARNING: No numeric time directories found to backup in {case_dir}")
+        return backup_dir
+
+    latest_time_dir = case_dir / str(latest_time)
+
+    # Remove old backup if it exists
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    # Preferred: copy the unified root time directory if present
+    copied_any = False
+    if latest_time_dir.exists():
+        try:
+            shutil.copytree(latest_time_dir, backup_dir, dirs_exist_ok=True)
+            print(f"  Copied root time directory: {latest_time_dir.name} → {backup_dir.name}/")
+            copied_any = True
+        except Exception:
+            # Fall through to copying processor subdirs if copytree fails
+            pass
+
+    # If root time dir did not contain expected fields, also copy per-processor time dirs
+    proc_dirs = sorted([d for d in case_dir.iterdir() if d.is_dir() and d.name.startswith('processor')],
+                       key=lambda p: int(p.name.replace('processor', '')))
+    for proc in proc_dirs:
+        proc_time = proc / str(latest_time)
+        if proc_time.exists():
+            dest = backup_dir / proc.name
+            try:
+                shutil.copytree(proc_time, dest, dirs_exist_ok=True)
+                print(f"  Copied processor time: {proc.name}/{latest_time} → {dest}/")
+                copied_any = True
+            except Exception:
+                # Try per-field copy as fallback
+                dest.mkdir(parents=True, exist_ok=True)
+                for fname in ('p', 'U', 'T'):
+                    srcf = proc_time / fname
+                    if srcf.exists():
+                        try:
+                            shutil.copy2(srcf, dest / fname)
+                            copied_any = True
+                        except Exception:
+                            pass
+
+    # As a last-resort, copy specific fields from the root time dir if present
+    if not copied_any and latest_time_dir.exists():
+        for fname in ('p', 'U', 'T', 'gamma', 'fsens'):
+            srcf = latest_time_dir / fname
+            if srcf.exists():
+                try:
+                    shutil.copy2(srcf, backup_dir / fname)
+                    copied_any = True
+                except Exception:
+                    pass
+
+    if copied_any:
+        print(f"  Fluid state backed up for time {latest_time} → {backup_dir}")
+    else:
+        print(f"  WARNING: No fluid state files found for time {latest_time} to backup.")
+
+    return backup_dir
 
 
 # ── Main optimizer class ───────────────────────────────────────────────────────
@@ -846,10 +937,14 @@ class GyroidRBFOptimizer:
         write_gamma_field(gamma_path, gamma, '0')
         print(f"  gamma written → {gamma_path}")
 
-        run_openfoam_one_step(
-            self.case_dir, start_t, end_t,
-            self.solver, self.n_procs, iter_num=self._iter
-        )
+        try:
+            run_openfoam_one_step(
+                self.case_dir, start_t, end_t,
+                self.solver, self.n_procs, iter_num=self._iter
+            )
+        finally:
+            # Always backup the latest fluid state, even if solver fails or is interrupted
+            backup_latest_fluid_state(self.case_dir)
 
         fsens_path = self.case_dir / '1' / 'fsens'
         if not fsens_path.exists():

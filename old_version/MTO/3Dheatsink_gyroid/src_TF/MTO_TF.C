@@ -91,8 +91,9 @@ int main(int argc, char *argv[])
         {
         gamma.write();
         fsens.write();   // needed by Schwarz RBF Python optimizer
-        //T.write();
-        //U.write();
+        T.write();
+        U.write();
+        p.write();
         }
 
         Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
