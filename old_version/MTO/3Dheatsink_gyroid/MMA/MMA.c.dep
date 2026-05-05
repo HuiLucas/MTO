@@ -1,6 +1,0 @@
-$(OBJECTS_DIR)/../../../MMA/MMA.c.dep: \
-../../../MMA/MMA.c \
-MMA.h \
-
-MMA.h :
-

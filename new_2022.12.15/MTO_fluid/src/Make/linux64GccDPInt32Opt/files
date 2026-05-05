@@ -1,6 +1,0 @@
-SOURCE += adjointOutletPressurePower/adjointOutletPressurePowerFvPatchScalarField.C
-SOURCE += adjointOutletVelocityPower/adjointOutletVelocityPowerFvPatchVectorField.C
-SOURCE += MMA/MMA.C
-
-SOURCE += MTO_Fluid.C
-EXE = $(FOAM_USER_APPBIN)/MTO_Fluid
