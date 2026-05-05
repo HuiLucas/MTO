@@ -1,0 +1,255 @@
+# Gyroid case configuration
+#
+# This file is the primary control panel for gyroid_case_wrapper.py.
+# Keep the comments in place if you edit values; they explain what each
+# parameter does and when it should be changed.
+
+run:
+  # OpenFOAM case directory relative to gyroid_case_wrapper.py.
+  # Change this when you want the wrapper to operate on a different case folder.
+  case: app
+
+  # OpenFOAM solver executable to run after meshing and decomposition.
+  # Keep this as MTO_TF unless you built the solver under another name.
+  solver: MTO_TF
+
+  # Number of MPI ranks used for the solver.
+  # Set this to 1 for serial runs, or to the number of cores you want to use.
+  parallel: 10
+
+  # postProcess binary used to generate cell centres.
+  # Change this only if your OpenFOAM installation uses a different binary name.
+  postprocess: postProcess
+
+  # If true, the wrapper keeps the existing case directory contents and only rewrites setup files.
+  # Use this when you want to preserve a prepared mesh or other files.
+  skip_clean: false
+
+  # Maximum number of outer optimizer iterations.
+  # Increase for a longer optimization run; decrease for a quick test.
+  iters: 50
+
+geometry:
+  # Lower corner of the box domain in mm.
+  # Move this when the design domain does not start at the global origin.
+  origin_mm: [0.0, 0.0, 0.0]
+
+  # Box size in mm along x, y, and z.
+  # Change these when the physical simulation box changes.
+  size_mm: [5.0, 2.5, 10.0]
+
+  # Number of blockMesh cells in x, y, and z.
+  # Larger numbers increase resolution and runtime; smaller numbers run faster.
+  cells: [80, 40, 160]
+
+  # Axis that defines the flow direction.
+  # The inlet is placed on the minimum face of this axis and the outlet on the maximum face.
+  flow_axis: x
+
+inlet:
+  # Which face of the flow axis carries the inlet window.
+  # Use min for the low side of the flow axis, or max for the opposite side.
+  face: min
+
+  # Rectangular inlet window origin on the chosen face, in mm.
+  # The coordinates are local to the face and ordered by the two transverse axes.
+  # For flow_axis: x -> [y0, z0], y -> [x0, z0], z -> [x0, y0].
+  window_origin_mm: [0.0, 0.0]
+
+  # Rectangular inlet window size on the chosen face, in mm.
+  # Increase to open more of the face; decrease to concentrate the inflow.
+  # The same transverse-axis ordering applies as for window_origin_mm.
+  window_size_mm: [1.0, 0.5]
+
+  # Inlet velocity magnitude in m/s.
+  # This is the speed of the incoming flow normal to the inlet face.
+  velocity_magnitude: 0.1
+
+  # Inlet fluid temperature in K.
+  # Fixed temperature boundary condition applied at inlet.
+  temperature: 130.0
+
+outlet:
+  # Which face of the flow axis carries the outlet window.
+  # Usually this is opposite of inlet.face.
+  # The wrapper enforces opposite faces for inlet and outlet to avoid ambiguous boundary assignment.
+  face: max
+
+  # Rectangular outlet window origin on the chosen face, in mm.
+  # The coordinates are local to the face and ordered by the two transverse axes.
+  # For flow_axis: x -> [y0, z0], y -> [x0, z0], z -> [x0, y0].
+  window_origin_mm: [1.5, 9.5]
+
+  # Rectangular outlet window size on the chosen face, in mm.
+  # Increase to open more of the face; decrease to force outflow through a smaller area.
+  # The same transverse-axis ordering applies as for window_origin_mm.
+  window_size_mm: [1.0, 0.5]
+  # Outlet pressure reference in Pa.
+  # Fixed pressure boundary condition applied at outlet.
+  pressure: 0.0
+material:
+  # Fluid kinematic viscosity.
+  # Change this when the working fluid differs from the repository default.
+  nu: 1.0e-6
+
+  # Maximum flow resistance used by the legacy backend.
+  # Used only if darcy_number is 0.0; otherwise computed from Darcy relationship.
+  # Raise this to penalize fluid regions more aggressively.
+  alpha_max: 5.0e6
+
+  # Initial MMA parameter.
+  # Usually left at the default unless you are tuning convergence behavior.
+  mma_init: 0.5
+
+  # MMA decrease factor.
+  # Lower values make the algorithm back off more after poor steps.
+  mma_dec: 0.7
+
+  # MMA increase factor.
+  # Higher values let the optimizer become more aggressive after good steps.
+  mma_inc: 1.2
+
+  # MMA move limit.
+  # Controls how far the optimizer is allowed to move per step.
+  movlim: 0.4
+
+  # Initial fluid volume fraction.
+  # Change this if the starting topology should be more solid or more open.
+  voluse: 0.2
+
+  # Filter radius used by the backend.
+  # Increase it for smoother updates; decrease it for more local variation.
+  filter_radius: 2.0
+
+  # Backend flags inherited from the original solver.
+  # Keep these unchanged unless the solver logic itself changes.
+  solid_area: 0.0
+  fluid_area: 1.0
+  test_pd: 0.0
+
+  # Legacy normalization and penalty coefficients used inside the solver.
+  # Only change these if the backend equations or scaling change.
+  d_normalization: 1.0e-9
+  d0: 10.0
+  d1: 4.0
+  geo_dim: 3.0
+  b1: 1.0
+  qu: 0.005
+
+  # Thermal properties written into constant/thermalProperties.
+  # Change these whenever the simulated material or fluid changes.
+  kf: 0.61
+  ks: 237.0
+  rhoc: 4180000.0
+  t_alpha: 2.0e-5
+
+  # Density used only for reporting estimated solid mass of the heat exchanger in the wrapper output.
+  # This does not affect the CFD equations.
+  solid_density_g_per_mm3: 0.0027
+
+  # Darcy number used to compute alphaMax via: alphaMax = nu / (L^2 * Da)
+  # where L is the geometric mean of the two transverse (perpendicular-to-flow) dimensions.
+  # Set to 0.0 to disable and use the direct alpha_max value instead.
+  # This relationship is computed once during case preparation and written as alphaMax.
+  darcy_number: 1.6e-8
+
+  # Fluid density in kg/m³ (for future use; currently informational only).
+  # This does not affect the current incompressible solver equations.
+  rho_fluid: 1000.0
+
+thermal:
+  # Initial domain temperature in K (for internal fields).
+  # This is the starting temperature everywhere except at boundaries.
+  initial_temperature: 0.0
+
+  # Wall (external boundary) temperature in K.
+  # Applied as zeroGradient at internal boundaries; walls do not have a fixed temperature.
+  # This is informational for the user.
+  wall_temperature: 0.0
+
+turbulence:
+  # OpenFOAM simulation type written to turbulenceProperties.
+  # Keep laminar for the current solver setup unless you intentionally switch to a turbulence model.
+  simulation_type: laminar
+
+  # RAS model name written to turbulenceProperties.
+  # This matters only when simulation_type is RAS.
+  ras_model: laminar
+
+  # Turbulence switch written to turbulenceProperties.
+  # Use off for laminar runs and on for turbulence models.
+  turbulence: off
+
+  # Whether to print turbulence model coefficients.
+  # Usually off unless you are debugging the model.
+  print_coeffs: off
+
+optimization:
+  # Gyroid cell size in mm.
+  # This sets the base TPMS frequency; change it to make the lattice finer or coarser.
+  unit: 1.5
+
+  # Gyroid wall thickness in mm.
+  # Increase it for thicker struts; decrease it for a more open structure.
+  wall: 0.30
+
+  # Smooth-Heaviside sharpness in mm.
+  # Smaller values make the gamma transition sharper; larger values make it smoother. See the paper pdf.
+  epsilon: 0.04
+
+  # RBF control-point spacing in mm.
+  # Smaller spacing gives more design freedom but increases the number of variables.
+  spacing: 2.0
+
+  # RBF bake-grid spacing in mm.
+  # Smaller values improve lookup accuracy but cost more memory and startup time.
+  bake_spacing: 0.4
+
+  # Allowed frequency perturbation amplitude in rad/mm.
+  # Increase only if you need stronger geometric variation.
+  kbound: 2.0
+
+  # Optimization mode.
+  # heat: minimize mean temperature.
+  # pressure: minimize dissipation power and optionally enforce a temperature limit. As of now pressure mode does not converge.
+  mode: heat
+
+  # Mean temperature upper bound used only in pressure mode.
+  # Leave null if you are not applying a mean-temperature constraint.
+  meantT_max: null
+
+  # Penalty multiplier for constraint violations.
+  # Increase this if the optimizer keeps violating constraints.
+  mu_penalty: 100.0
+
+  # AM overhang filter radius in mm.
+  # Used only when the overhang constraint is enabled.
+  am_filter: 0.15
+
+  # Maximum overhang angle in degrees.
+  # 45 degrees is a common self-supporting benchmark.
+  am_theta: 45.0
+
+  # Overhang constraint bound.
+  # Lower values tighten the support requirement.
+  am_P_bar: 0.01
+
+  # Thickness constraint bound.
+  # Lower values enforce a stricter minimum thickness.
+  am_Phi_o: 0.01
+
+  # Overhang penalty weight.
+  # Increase this if overhang violations should dominate the penalty.
+  mu_overhang: 1.0
+
+  # Thickness penalty weight.
+  # Increase this if thickness violations should dominate the penalty.
+  mu_thickness: 20.0
+
+  # Disable the overhang constraint entirely when true.
+  # Use this when overhang control is not required.
+  no_overhang: false
+
+  # Disable the thickness constraint entirely when true.
+  # Use this when thickness is controlled elsewhere or not needed.
+  no_thickness: false

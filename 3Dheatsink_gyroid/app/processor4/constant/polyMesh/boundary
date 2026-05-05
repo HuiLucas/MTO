@@ -14,55 +14,55 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-9
+8
 (
     inlet
     {
         type            patch;
         nFaces          0;
-        startFace       74612;
+        startFace       148800;
     }
     outlet
     {
         type            patch;
         nFaces          0;
-        startFace       74612;
+        startFace       148800;
+    }
+    wall
+    {
+        type            patch;
+        nFaces          3840;
+        startFace       148800;
     }
     force
     {
         type            patch;
         nFaces          0;
-        startFace       74612;
-    }
-    wall
-    {
-        type            patch;
-        nFaces          640;
-        startFace       74612;
+        startFace       152640;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
-        nFaces          1280;
-        startFace       75252;
+        nFaces          0;
+        startFace       152640;
     }
-    procBoundary4to0
+    procBoundary4to2
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          819;
-        startFace       76532;
+        nFaces          1600;
+        startFace       152640;
         matchTolerance  0.0001;
         myProcNo        4;
-        neighbProcNo    0;
+        neighbProcNo    2;
     }
     procBoundary4to5
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          678;
-        startFace       77351;
+        nFaces          2560;
+        startFace       154240;
         matchTolerance  0.0001;
         myProcNo        4;
         neighbProcNo    5;
@@ -71,21 +71,11 @@ FoamFile
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1299;
-        startFace       78029;
+        nFaces          1600;
+        startFace       156800;
         matchTolerance  0.0001;
         myProcNo        4;
         neighbProcNo    6;
-    }
-    procBoundary4to8
-    {
-        type            processor;
-        inGroups        List<word> 1(processor);
-        nFaces          800;
-        startFace       79328;
-        matchTolerance  0.0001;
-        myProcNo        4;
-        neighbProcNo    8;
     }
 )
 

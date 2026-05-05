@@ -846,6 +846,8 @@ class GyroidRBFOptimizer:
         solver:          str   = 'MTO_TF',
         n_procs:         int   = 1,
         of_binary:       str   = 'postProcess',
+        opt_bounds_min:  np.ndarray | None = None,
+        opt_bounds_max:  np.ndarray | None = None,
         # ── AM constraint options ──────────────────────────────────────────────
         am_r_filter:     float = 0.15,
         am_theta_max:    float = math.pi / 4.0,
@@ -863,6 +865,7 @@ class GyroidRBFOptimizer:
         mu_mass:           float = 100.0,
         mu_flow:           float = 100.0,
         mu_disspower:      float = 100.0,
+        solid_density_g_per_mm3: float = SOLID_DENSITY_G_PER_MM3,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -872,6 +875,7 @@ class GyroidRBFOptimizer:
         self.k_amp_bound    = k_amp_bound
         self.solver         = solver
         self.n_procs        = n_procs
+        self.solid_density_g_per_mm3 = solid_density_g_per_mm3
         self._accepted_iter = 0
         self._pending_update: dict | None = None
         self._history: list[dict] = []
@@ -888,11 +892,20 @@ class GyroidRBFOptimizer:
                 "negative frequencies would occur. Reduce k_amp_bound."
             )
 
-        opt_min = np.array([OPT_XMIN, OPT_YMIN, OPT_ZMIN])
-        opt_max = np.array([OPT_XMAX, OPT_YMAX, OPT_ZMAX])
+        if opt_bounds_min is None:
+            opt_bounds_min = np.array([OPT_XMIN, OPT_YMIN, OPT_ZMIN], dtype=float)
+        else:
+            opt_bounds_min = np.asarray(opt_bounds_min, dtype=float)
+        if opt_bounds_max is None:
+            opt_bounds_max = np.array([OPT_XMAX, OPT_YMAX, OPT_ZMAX], dtype=float)
+        else:
+            opt_bounds_max = np.asarray(opt_bounds_max, dtype=float)
 
-        field_min = opt_min - 0.5
-        field_max = opt_max + 0.5
+        self.opt_bounds_min = opt_bounds_min
+        self.opt_bounds_max = opt_bounds_max
+
+        field_min = opt_bounds_min - 0.5
+        field_max = opt_bounds_max + 0.5
 
         axes = [np.arange(lo, hi + control_spacing, control_spacing)
                 for lo, hi in zip(field_min, field_max)]
@@ -1047,7 +1060,7 @@ class GyroidRBFOptimizer:
         meanT, dissPower, massflow, deltaP = read_objective(self.case_dir)
 
         vol_use    = 1.0 - gamma.mean()
-        solid_mass = SOLID_DENSITY_G_PER_MM3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
+        solid_mass = self.solid_density_g_per_mm3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
         if self.mode == 'pressure' and self.meantT_max is not None:
              print(f"\n  Objective: DissPower = {dissPower:.6g}  (to minimize)")
              print(f"  Constraint: meanT ≤ {self.meantT_max:.6g}  (current meanT = {meanT:.6g})")
@@ -1311,6 +1324,20 @@ def main() -> None:
                         help='Path to gyroid_ctrl_pts.txt for warm-start')
     parser.add_argument('--postprocess', default='postProcess',
                         help='OpenFOAM postProcess binary (default: postProcess)')
+    parser.add_argument('--opt-xmin', type=float, default=OPT_XMIN,
+                        help=f'Optimization box min x in mm (default: {OPT_XMIN})')
+    parser.add_argument('--opt-xmax', type=float, default=OPT_XMAX,
+                        help=f'Optimization box max x in mm (default: {OPT_XMAX})')
+    parser.add_argument('--opt-ymin', type=float, default=OPT_YMIN,
+                        help=f'Optimization box min y in mm (default: {OPT_YMIN})')
+    parser.add_argument('--opt-ymax', type=float, default=OPT_YMAX,
+                        help=f'Optimization box max y in mm (default: {OPT_YMAX})')
+    parser.add_argument('--opt-zmin', type=float, default=OPT_ZMIN,
+                        help=f'Optimization box min z in mm (default: {OPT_ZMIN})')
+    parser.add_argument('--opt-zmax', type=float, default=OPT_ZMAX,
+                        help=f'Optimization box max z in mm (default: {OPT_ZMAX})')
+    parser.add_argument('--solid-density', type=float, default=SOLID_DENSITY_G_PER_MM3,
+                        help=f'Solid density in g/mm^3 for mass reporting (default: {SOLID_DENSITY_G_PER_MM3})')
     # ── AM constraint arguments ────────────────────────────────────────────────
     parser.add_argument('--am-filter',    type=float, default=0.15,
                         help='Helmholtz filter radius in mm (default: 0.15)')
@@ -1355,6 +1382,8 @@ def main() -> None:
         solver          = args.solver,
         n_procs         = args.parallel,
         of_binary       = args.postprocess,
+        opt_bounds_min  = np.array([args.opt_xmin, args.opt_ymin, args.opt_zmin]),
+        opt_bounds_max  = np.array([args.opt_xmax, args.opt_ymax, args.opt_zmax]),
         am_r_filter     = args.am_filter,
         am_theta_max    = math.radians(args.am_theta),
         am_P_bar        = args.am_P_bar,
@@ -1366,6 +1395,7 @@ def main() -> None:
         mode            = args.mode,
         target_mass_g   = args.meantT_max,
         mu_mass         = args.mu_penalty,
+        solid_density_g_per_mm3 = args.solid_density,
     )
     opt.run(n_iters=args.iters, load_ctrl=warm)
 
