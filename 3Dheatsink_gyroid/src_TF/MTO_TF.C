@@ -33,7 +33,7 @@ License
 #include "adjustPhi.H"
 #include "constrainPressure.H"
 #include "constrainHbyA.H"
-#include "../../../../new_2022.12.15/common/OpenFOAMCompat.H"
+#include "../../OpenFOAMCompat.H"
 #include "simpleControl.H"
 #include "fvOptionCompat.H"
 #include <math.h>

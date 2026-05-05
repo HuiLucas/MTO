@@ -11,7 +11,7 @@ $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/IOMRFZoneList.H \
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/adjustPhi.H \
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/constrainPressure.H \
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/constrainHbyA.H \
-../../../../new_2022.12.15/common/OpenFOAMCompat.H \
+../../OpenFOAMCompat.H \
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/simpleControl.H \
 fvOptionCompat.H \
 $(WM_PROJECT_DIR)/src/OpenFOAM/lnInclude/setRootCase.H \
@@ -790,7 +790,7 @@ $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/IOMRFZoneList.H :
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/adjustPhi.H :
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/constrainPressure.H :
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/constrainHbyA.H :
-../../../../new_2022.12.15/common/OpenFOAMCompat.H :
+../../OpenFOAMCompat.H :
 $(WM_PROJECT_DIR)/src/finiteVolume/lnInclude/simpleControl.H :
 fvOptionCompat.H :
 $(WM_PROJECT_DIR)/src/OpenFOAM/lnInclude/setRootCase.H :
