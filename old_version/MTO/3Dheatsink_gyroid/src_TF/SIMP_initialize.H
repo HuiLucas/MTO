@@ -1,8 +1,10 @@
 // 
     std::remove("Voluse.txt");
-    std::remove("meanT.txt"); 
-    std::remove("Disspower.txt");  
+    std::remove("meanT.txt");
+    std::remove("Disspower.txt");
     std::remove("Time.txt");
+    std::remove("massflow.txt");
+    std::remove("deltaP.txt");
 //    
     scalar C(0);
     scalar DissPower(0);

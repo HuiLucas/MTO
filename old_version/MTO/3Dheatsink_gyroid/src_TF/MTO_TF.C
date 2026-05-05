@@ -90,7 +90,8 @@ int main(int argc, char *argv[])
         if(runTime.writeTime())
         {
         gamma.write();
-        fsens.write();   // needed by Schwarz RBF Python optimizer
+        fsens.write();    // dJ_thermal/dgamma  – used by heat-minimisation mode
+        gsens_U.write();  // dDissPower/dgamma  – used by pressure-drop mode
         T.write();
         U.write();
         p.write();

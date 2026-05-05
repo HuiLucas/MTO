@@ -338,7 +338,7 @@ class AMConstraints:
         P_bar:           float       = 0.01,
         Phi_o:           float       = 0.01,
         mu_overhang:     float       = 1.0,
-        mu_thickness:    float       = 10.0,
+        mu_thickness:    float       = 1.0,
         use_overhang:    bool        = True,
         use_thickness:   bool        = True,
     ):
@@ -445,7 +445,8 @@ class AMConstraints:
         Increase penalty weights if constraints are still violated.
         Call once per outer iteration after `apply`.
         """
+        # Increase penalties gently to avoid runaway augmentation
         if self.use_overhang and info['g_oh'] > self.P_bar + violation_tol:
-            self.mu_oh = min(self.mu_oh * 2.0, 1e6)
+            self.mu_oh = min(self.mu_oh * 1.2, 1e6)
         if self.use_thickness and info['g_th'] > self.Phi_o + violation_tol:
-            self.mu_th = min(self.mu_th * 2.0, 1e6)
+            self.mu_th = min(self.mu_th * 1.2, 1e6)

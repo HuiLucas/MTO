@@ -73,6 +73,9 @@ F_UNIT_SIZE      = 1.5    # TPMS cell size (mm) – sets base frequency k_base
 F_WALL_THICKNESS = 0.30   # solid wall thickness (mm)
 SDF_EPSILON      = 0.04   # smooth-Heaviside sharpness (mm)
 
+# Solid material density for mass calculation (thermalProperties: ks=237 → aluminium)
+SOLID_DENSITY_G_PER_MM3 = 0.0027   # g/mm³  (aluminium 2700 kg/m³)
+
 # RBF control-point grid
 CONTROL_SPACING  = 2.0    # spacing between control points (mm)
 K_AMP_BOUND      = 2.0    # ±bound on each dk component (rad/mm);
@@ -696,15 +699,44 @@ def run_openfoam_one_step(case_dir: Path,
         backup_latest_fluid_state(case_dir)
 
 
-def read_objective(case_dir: Path) -> tuple[float, float]:
-    """Read the latest meanT and DissPower from text files."""
+def read_objective(case_dir: Path) -> tuple[float, float, float, float]:
+    """Read the latest meanT, DissPower, massflow and deltaP from text files."""
     def _last(fname):
         p = case_dir / fname
         if not p.exists():
             return float('nan')
         lines = [l.strip() for l in p.read_text().splitlines() if l.strip()]
         return float(lines[-1]) if lines else float('nan')
-    return _last('meanT.txt'), _last('Disspower.txt')
+    return (_last('meanT.txt'), _last('Disspower.txt'),
+            _last('massflow.txt'), _last('deltaP.txt'))
+
+
+def read_adjoint_sensitivity(case_dir: Path, sens_name: str = 'fsens') -> np.ndarray:
+    """
+    Read adjoint sensitivity field from OpenFOAM output.
+    
+    Parameters
+    ----------
+    case_dir : Path
+        OpenFOAM case directory
+    sens_name : str
+        Name of the sensitivity field to read ('fsens' or 'gsens_U' for DissPower)
+        
+    Returns
+    -------
+    np.ndarray
+        Sensitivity values, shape (N_cells,)
+    """
+    latest_time = get_latest_time(case_dir)
+    sens_path = case_dir / str(latest_time) / sens_name
+    
+    if not sens_path.exists():
+        raise FileNotFoundError(
+            f"Sensitivity field '{sens_name}' not found at {sens_path}.\n"
+            f"Make sure the OpenFOAM solver writes this field."
+        )
+    
+    return read_scalar_field(sens_path)
 
 
 def backup_latest_fluid_state(case_dir: Path, backup_dir: Path | None = None) -> Path:
@@ -815,24 +847,39 @@ class GyroidRBFOptimizer:
         n_procs:         int   = 1,
         of_binary:       str   = 'postProcess',
         # ── AM constraint options ──────────────────────────────────────────────
-        am_r_filter:     float = 0.15,   # Helmholtz filter radius (mm)
+        am_r_filter:     float = 0.15,
         am_theta_max:    float = math.pi / 4.0,
         am_P_bar:        float = 0.01,
         am_Phi_o:        float = 0.01,
         am_mu_overhang:  float = 1.0,
-        am_mu_thickness: float = 10.0,
+        am_mu_thickness: float = 20.0,
         use_overhang:    bool  = True,
         use_thickness:   bool  = True,
+        # ── Optimisation mode ─────────────────────────────────────────────────
+        mode:              str   = 'heat',   # 'heat' or 'pressure'
+        target_mass_g:     float | None = None,
+        target_flow_m3s:   float | None = None,
+        target_disspower:  float | None = None,
+        mu_mass:           float = 100.0,
+        mu_flow:           float = 100.0,
+        mu_disspower:      float = 100.0,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
-        self.half_thickness = 0.5 * wall_thickness
+        self.wall_thickness = wall_thickness  # Physical wall thickness (mm)
+        self.half_thickness = 0.5 * wall_thickness  # Half-thickness for SDF
         self.epsilon        = epsilon
         self.k_amp_bound    = k_amp_bound
         self.solver         = solver
         self.n_procs        = n_procs
         self._iter          = 0
         self._history: list[dict] = []
+        
+        # ── Optimisation mode and constraints ──────────────────────────────────
+        self.mode           = mode  # 'heat' or 'pressure'
+        self.meantT_max     = target_mass_g  # Max mean temperature (for constraint mode)
+        self.mu_penalty     = mu_mass  # Penalty multiplier for constraints
+        self._mu_adaptive   = mu_mass  # Adaptive penalty that increases if constraints violated
 
         if k_base - k_amp_bound <= 0:
             raise ValueError(
@@ -863,6 +910,15 @@ class GyroidRBFOptimizer:
 
         self.cell_centers_mm = get_cell_centers_mm(case_dir, of_binary)
         self.n_cells = len(self.cell_centers_mm)
+
+        # Estimate cell volume from bounding box of cell centres (mesh is nearly uniform).
+        # Add half a cell-spacing on each side to convert centre-to-centre extent to full extent.
+        cc = self.cell_centers_mm
+        h_est = float(np.median(np.diff(np.unique(np.round(cc[:, 2], 4)))))  # z-spacing (mm)
+        x_range = cc[:, 0].max() - cc[:, 0].min() + h_est
+        y_range = cc[:, 1].max() - cc[:, 1].min() + h_est
+        z_range = cc[:, 2].max() - cc[:, 2].min() + h_est
+        self._v_cell_mm3 = (x_range * y_range * z_range) / self.n_cells  # mm³ per cell
 
         self.W = build_rbf_jacobian(self.ctrl_pts_mm, self.cell_centers_mm, bake_spacing)
 
@@ -915,13 +971,17 @@ class GyroidRBFOptimizer:
         1. Evaluate Gyroid gamma from x.
         2. Write gamma to OpenFOAM.
         3. Run one OpenFOAM outer iteration.
-        4. Read fsens and objective.
+        4. Read fsens or gsens_U and objective based on mode.
         5. Chain-rule → gradient w.r.t. x.
+        
+        Modes:
+        - 'heat': minimize meanT (current behavior), read fsens
+        - 'pressure': minimize DissPower, read gsens_U, apply penalty for meanT constraint
         """
         t0 = time.time()
         self._iter += 1
         print(f"\n{'─'*60}")
-        print(f"Outer iteration {self._iter}")
+        print(f"Outer iteration {self._iter}  [mode: {self.mode}]")
         print(f"{'─'*60}")
 
         start_t = 0
@@ -946,45 +1006,83 @@ class GyroidRBFOptimizer:
             # Always backup the latest fluid state, even if solver fails or is interrupted
             backup_latest_fluid_state(self.case_dir)
 
-        fsens_path = self.case_dir / '1' / 'fsens'
-        if not fsens_path.exists():
-            raise FileNotFoundError(
-                f"fsens not found at {fsens_path}.\n"
-                "Make sure MTO_TF.C has been modified to call fsens.write() "
-                "and the solver has been recompiled."
-            )
-        fsens = read_scalar_field(fsens_path)
+        # ── Read sensitivity based on mode ────────────────────────────────────
+        if self.mode == 'pressure':
+            # Minimize DissPower: read gsens_U
+            try:
+                fsens_base = read_adjoint_sensitivity(self.case_dir, 'gsens_U')
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    "gsens_U not found. For 'pressure' mode, the OpenFOAM solver must\n"
+                    "compute and write the adjoint sensitivity of DissPower w.r.t. gamma.\n"
+                    "Ensure MTO_TF.C includes the DissPower adjoint computation."
+                )
+        else:  # mode == 'heat' (default)
+            # Minimize meanT: read fsens
+            fsens_base = read_adjoint_sensitivity(self.case_dir, 'fsens')
 
-        meanT, dissPower = read_objective(self.case_dir)
+        meanT, dissPower, massflow, deltaP = read_objective(self.case_dir)
 
-        vol_use = 1.0 - gamma.mean()
+        vol_use    = 1.0 - gamma.mean()
+        solid_mass = SOLID_DENSITY_G_PER_MM3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
         print(f"  J (meanT)      = {meanT:.6g}")
-        print(f"  DissPower      = {dissPower:.6g}  (constraint, not minimised)")
+        print(f"  DissPower      = {dissPower:.6g}")
+        print(f"  flow_rate      = {massflow:.6g} m³/s")
+        print(f"  deltaP         = {deltaP:.6g} m²/s²  (kinematic pressure drop)")
+        print(f"  solid_mass     = {solid_mass:.4f} g  (aluminium, half-symmetry domain)")
         print(f"  solid_fraction = {vol_use:.4f}")
-        print(f"  ||fsens||_inf  = {np.abs(fsens).max():.4g}")
+        print(f"  ||sens||_inf   = {np.abs(fsens_base).max():.4g}")
 
+        # Normalize sensitivity
         if not hasattr(self, '_fsens_ref'):
-            self._fsens_ref = float(np.abs(fsens).max())
+            self._fsens_ref = float(np.abs(fsens_base).max())
             if self._fsens_ref == 0:
                 self._fsens_ref = 1.0
-        fsens_norm = fsens / self._fsens_ref
+        fsens_norm = fsens_base / self._fsens_ref
+
+        # ── Augmented objective with penalties ─────────────────────────────────
+        J_obj = dissPower if self.mode == 'pressure' else meanT
+        J_aug = float(J_obj)
+        fsens_aug = fsens_norm.copy()
+
+        # Constraint penalties (for 'pressure' mode, penalize meanT constraint violation)
+        constraint_info = {}
+        if self.mode == 'pressure' and self.meantT_max is not None:
+            # Penalty on meanT constraint: J += mu * max(0, meanT - meanT_max)^2
+            constraint_viol = max(0.0, meanT - self.meantT_max)
+            pen_meanT = self._mu_adaptive * constraint_viol ** 2
+            J_aug += pen_meanT
+            constraint_info['g_meanT'] = meanT
+            constraint_info['meanT_max'] = self.meantT_max
+            constraint_info['pen_meanT'] = pen_meanT
+            constraint_info['mu_adaptive'] = self._mu_adaptive
+            
+            # Add gradient contribution for meanT penalty: d(mu*g²)/d(gamma) = 2*mu*g * dg/dgamma
+            if constraint_viol > 0.0:
+                fsens_meantT = 2.0 * self._mu_adaptive * constraint_viol * (np.ones_like(fsens_norm) / self.n_cells)
+                fsens_aug += fsens_meantT
+                
+            print(f"  meanT_constraint: g={meanT:.6g} (limit {self.meantT_max:.6g}), "
+                  f"viol={constraint_viol:.6g}, pen={pen_meanT:.6g}, μ={self._mu_adaptive:.2f}")
+            
+            # Adaptively increase penalty if constraint is violated (basic adaptive penalty)
+            if constraint_viol > 1e-6:
+                self._mu_adaptive *= 1.1  # Increase by 10% for next iteration
 
         # ── AM constraint penalties ───────────────────────────────────────────
         am_info = {}
-        J_aug   = float(meanT)
         if self.am is not None:
             J_aug, fsens_aug, am_info = self.am.apply(
-                gamma, J_aug, fsens_norm, iteration=self._iter,
+                gamma, J_aug, fsens_aug, iteration=self._iter,
             )
             self.am.update_penalties(am_info)
+            # Try to adjust wall thickness first; only escalate penalty if that doesn't help
+            wall_adj = self._adjust_wall_thickness_if_violated(am_info)
             print(f"  g_overhang = {am_info.get('g_oh', 0.0):.4g}  "
                   f"(limit {self.am.P_bar:.3g}, pen={am_info.get('pen_oh',0):.3g})")
             print(f"  g_thickness= {am_info.get('g_th', 0.0):.4g}  "
                   f"(limit {self.am.Phi_o:.3g}, pen={am_info.get('pen_th',0):.3g})  "
-                  f"β_proj={am_info.get('beta_proj',1):.1f}")
-        else:
-            fsens_aug = fsens_norm
-
+                  f"β_proj={am_info.get('beta_proj',1):.1f}  wall_adj={'yes' if wall_adj else 'no'}")
         grad_ctrl = chain_rule_gradient(
             fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
         )                                            # (N_ctrl, 3)
@@ -995,10 +1093,21 @@ class GyroidRBFOptimizer:
               f"fsens_ref = {self._fsens_ref:.4g}")
 
         self._history.append(dict(
-            iter=self._iter, J=meanT, J_aug=J_aug,
+            iter=self._iter, 
+            J=meanT, J_aug=J_aug, J_obj=J_obj,
             dissPower=dissPower, vol=vol_use,
+            solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP,
+            mode=self.mode,
+            wall_thickness=self.wall_thickness,
             g_oh=am_info.get('g_oh', 0.0),
+            pen_oh=am_info.get('pen_oh', 0.0),
             g_th=am_info.get('g_th', 0.0),
+            pen_th=am_info.get('pen_th', 0.0),
+            g_meanT=constraint_info.get('g_meanT', float('nan')),
+            pen_meanT=constraint_info.get('pen_meanT', 0.0),
+            mu_adaptive=self._mu_adaptive,
+            mu_oh=(self.am.mu_oh if self.am is not None else float('nan')),
+            mu_th=(self.am.mu_th if self.am is not None else float('nan')),
             grad_norm=float(np.linalg.norm(grad_flat)), elapsed=elapsed,
         ))
         self._save_history()
@@ -1006,20 +1115,60 @@ class GyroidRBFOptimizer:
 
         return J_aug, grad_flat
 
+    def _adjust_wall_thickness_if_violated(self, am_info: dict) -> bool:
+        """
+        If thickness constraint is violated, increase wall_thickness before escalating penalties.
+        This gives the design room to satisfy the constraint geometrically.
+        
+        Returns True if adjustment was made, False otherwise.
+        """
+        if self.am is None or not self.am.use_thickness:
+            return False
+        
+        g_th = am_info.get('g_th', 0.0)
+        Phi_o = self.am.Phi_o
+        
+        # If violated by more than tolerance, increase wall_thickness by 5%
+        if g_th > Phi_o + 1e-3:
+            old_wt = self.wall_thickness
+            self.wall_thickness *= 1.05  # Increase by 5%
+            self.half_thickness = 0.5 * self.wall_thickness
+            print(f"  [Thickness adj] g_th={g_th:.4g} > Φ_o={Phi_o:.3g}  "
+                  f"wall_thickness: {old_wt:.4f} → {self.wall_thickness:.4f} mm")
+            return True
+        return False
+
     def _save_history(self) -> None:
         hist_path = self.case_dir / 'gyroid_opt_history.txt'
         with open(hist_path, 'w') as f:
-            f.write("iter  J_meanT      J_aug        DissPower    solid_frac  "
-                    "g_oh      g_th      grad_norm  elapsed_s\n")
+            f.write(
+                "iter  mode    J_meanT      J_obj        J_aug        DissPower    solid_frac  "
+                "solid_g    flow_m3s   deltaP_m2s2  wall_thickness  g_meanT    pen_meanT  mu_meanT  "
+                "g_oh    pen_oh    mu_oh    g_th    pen_th    mu_th    grad_norm  elapsed_s\n"
+            )
             for h in self._history:
-                f.write(f"{h['iter']:4d}  {h['J']:12.6g}  "
-                        f"{h.get('J_aug', h['J']):12.6g}  "
-                        f"{h.get('dissPower', float('nan')):12.6g}  "
-                        f"{h['vol']:10.4f}  "
-                        f"{h.get('g_oh', 0.0):9.4g}  "
-                        f"{h.get('g_th', 0.0):9.4g}  "
-                        f"{h['grad_norm']:10.4g}  "
-                        f"{h['elapsed']:8.1f}\n")
+                f.write(
+                    f"{h['iter']:4d}  {h.get('mode','heat'):6s}  {h['J']:12.6g}  "
+                    f"{h.get('J_obj', h['J']):12.6g}  "
+                    f"{h.get('J_aug', h['J']):12.6g}  "
+                    f"{h.get('dissPower', float('nan')):12.6g}  "
+                    f"{h['vol']:10.4f}  "
+                    f"{h.get('solid_mass', float('nan')):9.4f}  "
+                    f"{h.get('flow_rate', float('nan')):10.4g}  "
+                    f"{h.get('deltaP', float('nan')):12.4g}  "
+                    f"{h.get('wall_thickness', 0.0):14.4f}  "
+                    f"{h.get('g_meanT', float('nan')):10.4g}  "
+                    f"{h.get('pen_meanT', 0.0):10.4g}  "
+                    f"{h.get('mu_adaptive', float('nan')):8.4g}  "
+                    f"{h.get('g_oh', 0.0):8.4g}  "
+                    f"{h.get('pen_oh', 0.0):9.4g}  "
+                    f"{h.get('mu_oh', float('nan')):9.4g}  "
+                    f"{h.get('g_th', 0.0):8.4g}  "
+                    f"{h.get('pen_th', 0.0):9.4g}  "
+                    f"{h.get('mu_th', float('nan')):9.4g}  "
+                    f"{h['grad_norm']:10.4g}  "
+                    f"{h['elapsed']:8.1f}\n"
+                )
 
     def save_ctrl_pts(self, x: np.ndarray, tag: str = '') -> None:
         """Save current control-point positions + frequency perturbations to a file."""
@@ -1127,12 +1276,20 @@ def main() -> None:
                         help='Thickness constraint bound (default: 0.01)')
     parser.add_argument('--mu-overhang',  type=float, default=1.0,
                         help='Initial penalty weight for overhang (default: 1.0)')
-    parser.add_argument('--mu-thickness', type=float, default=10.0,
-                        help='Initial penalty weight for thickness (default: 10.0)')
+    parser.add_argument('--mu-thickness', type=float, default=20.0,
+                        help='Initial penalty weight for thickness (default: 20.0)')
     parser.add_argument('--no-overhang',  action='store_true',
                         help='Disable the overhang angle constraint')
     parser.add_argument('--no-thickness', action='store_true',
                         help='Disable the wall-thickness constraint')
+    # ── Optimization mode (thermal vs. pressure-based) ────────────────────────
+    parser.add_argument('--mode', choices=['heat', 'pressure'], default='heat',
+                        help="Optimization mode: 'heat' minimize meanT (default), "
+                             "'pressure' minimize DissPower")
+    parser.add_argument('--meantT-max', type=float, default=None,
+                        help='Upper bound on meanT (constraint, only used in pressure mode)')
+    parser.add_argument('--mu-penalty', type=float, default=100.0,
+                        help='Initial penalty multiplier for constraints (default: 100.0)')
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
@@ -1160,6 +1317,9 @@ def main() -> None:
         am_mu_thickness = args.mu_thickness,
         use_overhang    = not args.no_overhang,
         use_thickness   = not args.no_thickness,
+        mode            = args.mode,
+        target_mass_g   = args.meantT_max,
+        mu_mass         = args.mu_penalty,
     )
     opt.run(n_iters=args.iters, load_ctrl=warm)
 
