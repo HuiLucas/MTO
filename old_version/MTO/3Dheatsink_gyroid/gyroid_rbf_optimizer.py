@@ -872,7 +872,8 @@ class GyroidRBFOptimizer:
         self.k_amp_bound    = k_amp_bound
         self.solver         = solver
         self.n_procs        = n_procs
-        self._iter          = 0
+        self._accepted_iter = 0
+        self._pending_update: dict | None = None
         self._history: list[dict] = []
         
         # ── Optimisation mode and constraints ──────────────────────────────────
@@ -964,6 +965,28 @@ class GyroidRBFOptimizer:
         gamma    = gamma_from_sdf(sdf, self.epsilon)
         return gamma, sdf, freq_mm
 
+    def _on_accepted_step(self, xk: np.ndarray) -> None:
+        """Commit state updates after SciPy accepts a step."""
+        self._accepted_iter += 1
+
+        pending = self._pending_update
+        if pending is None:
+            return
+
+        next_mu = pending.get('next_mu_adaptive')
+        if next_mu is not None:
+            self._mu_adaptive = next_mu
+
+        am_info = pending.get('am_info')
+        if self.am is not None and am_info is not None:
+            self.am.update_penalties(am_info)
+
+        if pending.get('wall_adjust', False):
+            if am_info is not None:
+                self._adjust_wall_thickness_if_violated(am_info)
+
+        self._pending_update = None
+
     # ── objective + gradient (called by scipy) ────────────────────────────────
 
     def objective_and_gradient(self, x: np.ndarray) -> tuple[float, np.ndarray]:
@@ -979,9 +1002,9 @@ class GyroidRBFOptimizer:
         - 'pressure': minimize DissPower, read gsens_U, apply penalty for meanT constraint
         """
         t0 = time.time()
-        self._iter += 1
+        eval_iter = self._accepted_iter + 1
         print(f"\n{'─'*60}")
-        print(f"Outer iteration {self._iter}  [mode: {self.mode}]")
+        print(f"Outer iteration {eval_iter}  [mode: {self.mode}]")
         print(f"{'─'*60}")
 
         start_t = 0
@@ -1000,7 +1023,7 @@ class GyroidRBFOptimizer:
         try:
             run_openfoam_one_step(
                 self.case_dir, start_t, end_t,
-                self.solver, self.n_procs, iter_num=self._iter
+                self.solver, self.n_procs, iter_num=eval_iter
             )
         finally:
             # Always backup the latest fluid state, even if solver fails or is interrupted
@@ -1025,7 +1048,12 @@ class GyroidRBFOptimizer:
 
         vol_use    = 1.0 - gamma.mean()
         solid_mass = SOLID_DENSITY_G_PER_MM3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
-        print(f"  J (meanT)      = {meanT:.6g}")
+        if self.mode == 'pressure' and self.meantT_max is not None:
+             print(f"\n  Objective: DissPower = {dissPower:.6g}  (to minimize)")
+             print(f"  Constraint: meanT ≤ {self.meantT_max:.6g}  (current meanT = {meanT:.6g})")
+        else:
+            print(f"\n  Objective: meanT = {meanT:.6g}  (to minimize)")    
+            print(f"  J (meanT)      = {meanT:.6g}")
         print(f"  DissPower      = {dissPower:.6g}")
         print(f"  flow_rate      = {massflow:.6g} m³/s")
         print(f"  deltaP         = {deltaP:.6g} m²/s²  (kinematic pressure drop)")
@@ -1050,39 +1078,56 @@ class GyroidRBFOptimizer:
         if self.mode == 'pressure' and self.meantT_max is not None:
             # Penalty on meanT constraint: J += mu * max(0, meanT - meanT_max)^2
             constraint_viol = max(0.0, meanT - self.meantT_max)
-            pen_meanT = self._mu_adaptive * constraint_viol ** 2
+            mu_adaptive = self._mu_adaptive
+            pen_meanT = mu_adaptive * constraint_viol ** 2
             J_aug += pen_meanT
             constraint_info['g_meanT'] = meanT
             constraint_info['meanT_max'] = self.meantT_max
             constraint_info['pen_meanT'] = pen_meanT
-            constraint_info['mu_adaptive'] = self._mu_adaptive
+            constraint_info['mu_adaptive'] = mu_adaptive
+
+            meanT_sens_base = read_adjoint_sensitivity(self.case_dir, 'fsens')
+            if not hasattr(self, '_meanT_sens_ref'):
+                self._meanT_sens_ref = float(np.abs(meanT_sens_base).max())
+                if self._meanT_sens_ref == 0:
+                    self._meanT_sens_ref = 1.0
+            meanT_sens_norm = meanT_sens_base / self._meanT_sens_ref
             
             # Add gradient contribution for meanT penalty: d(mu*g²)/d(gamma) = 2*mu*g * dg/dgamma
             if constraint_viol > 0.0:
-                fsens_meantT = 2.0 * self._mu_adaptive * constraint_viol * (np.ones_like(fsens_norm) / self.n_cells)
+                fsens_meantT = 2.0 * mu_adaptive * constraint_viol * meanT_sens_norm
                 fsens_aug += fsens_meantT
                 
             print(f"  meanT_constraint: g={meanT:.6g} (limit {self.meantT_max:.6g}), "
-                  f"viol={constraint_viol:.6g}, pen={pen_meanT:.6g}, μ={self._mu_adaptive:.2f}")
+                  f"viol={constraint_viol:.6g}, pen={pen_meanT:.6g}, μ={mu_adaptive:.2f}")
             
             # Adaptively increase penalty if constraint is violated (basic adaptive penalty)
-            if constraint_viol > 1e-6:
-                self._mu_adaptive *= 1.1  # Increase by 10% for next iteration
+            next_mu_adaptive = mu_adaptive * 1.1 if constraint_viol > 1e-6 else mu_adaptive
+        else:
+            next_mu_adaptive = self._mu_adaptive
 
         # ── AM constraint penalties ───────────────────────────────────────────
         am_info = {}
         if self.am is not None:
             J_aug, fsens_aug, am_info = self.am.apply(
-                gamma, J_aug, fsens_aug, iteration=self._iter,
+                gamma, J_aug, fsens_aug, iteration=eval_iter,
             )
-            self.am.update_penalties(am_info)
-            # Try to adjust wall thickness first; only escalate penalty if that doesn't help
-            wall_adj = self._adjust_wall_thickness_if_violated(am_info)
             print(f"  g_overhang = {am_info.get('g_oh', 0.0):.4g}  "
                   f"(limit {self.am.P_bar:.3g}, pen={am_info.get('pen_oh',0):.3g})")
             print(f"  g_thickness= {am_info.get('g_th', 0.0):.4g}  "
                   f"(limit {self.am.Phi_o:.3g}, pen={am_info.get('pen_th',0):.3g})  "
-                  f"β_proj={am_info.get('beta_proj',1):.1f}  wall_adj={'yes' if wall_adj else 'no'}")
+                  f"β_proj={am_info.get('beta_proj',1):.1f}")
+
+        wall_adjust = False
+        if self.am is not None and am_info.get('g_th', 0.0) > self.am.Phi_o + 1e-3:
+            wall_adjust = True
+
+        self._pending_update = {
+            'next_mu_adaptive': next_mu_adaptive,
+            'am_info': am_info if self.am is not None else None,
+            'wall_adjust': wall_adjust,
+        }
+
         grad_ctrl = chain_rule_gradient(
             fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
         )                                            # (N_ctrl, 3)
@@ -1093,7 +1138,7 @@ class GyroidRBFOptimizer:
               f"fsens_ref = {self._fsens_ref:.4g}")
 
         self._history.append(dict(
-            iter=self._iter, 
+            iter=eval_iter, 
             J=meanT, J_aug=J_aug, J_obj=J_obj,
             dissPower=dissPower, vol=vol_use,
             solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP,
@@ -1220,6 +1265,7 @@ class GyroidRBFOptimizer:
             method='L-BFGS-B',
             jac=True,
             bounds=self.bounds,
+            callback=self._on_accepted_step,
             options=dict(maxiter=n_iters, ftol=1e-30, gtol=1e-4, iprint=1),
         )
 
