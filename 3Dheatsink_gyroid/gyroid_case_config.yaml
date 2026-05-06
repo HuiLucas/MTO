@@ -44,7 +44,7 @@ geometry:
 
   # Axis that defines the flow direction.
   # The inlet is placed on the minimum face of this axis and the outlet on the maximum face.
-  flow_axis: x
+  flow_axis: z
 
 inlet:
   # Which face of the flow axis carries the inlet window.
@@ -63,7 +63,7 @@ inlet:
 
   # Inlet velocity magnitude in m/s.
   # This is the speed of the incoming flow normal to the inlet face.
-  velocity_magnitude: 0.1
+  velocity_magnitude: 0.2
 
   # Inlet fluid temperature in K.
   # Fixed temperature boundary condition applied at inlet.
