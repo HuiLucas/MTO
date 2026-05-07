@@ -65,11 +65,11 @@ inlet:
 
   # Inlet velocity magnitude in m/s.
   # This is the speed of the incoming flow normal to the inlet face.
-  velocity_magnitude: 0.2
+  velocity_magnitude: 0.5
 
   # Inlet fluid temperature in K.
   # Fixed temperature boundary condition applied at inlet.
-  temperature: 130.0
+  temperature: 380.0
 
 outlet:
   # Which face of the flow axis carries the outlet window.
@@ -132,8 +132,8 @@ material:
   # Legacy normalization and penalty coefficients used inside the solver.
   # Only change these if the backend equations or scaling change.
   d_normalization: 1.0e-9
-  d0: 10.0
-  d1: 4.0
+  d0: 310.0
+  d1: 300.0
   geo_dim: 3.0
   b1: 1.0
   qu: 0.005
@@ -159,17 +159,19 @@ material:
   # This does not affect the current incompressible solver equations.
   rho_fluid: 1000.0
 
-  Texterior: 100.0
+  # Convective heat transfer coefficient at wall boundaries in W/(m² K).
+  # Applied as a Robin BC: q = hconv * (T_wall - Texterior).
+  # With water (rhoc=4.18e6) at 0.5 m/s, hconv < ~100 creates a negligible
+  # thermal gradient and zero sensitivities. Use >= 1000 for a meaningful problem.
+  hconv: 1000.0
+
+  Texterior: 270.0
 
 thermal:
   # Initial domain temperature in K (for internal fields).
   # This is the starting temperature everywhere except at boundaries.
-  initial_temperature: 0.0
+  initial_temperature: 270.0
 
-  # Wall (external boundary) temperature in K.
-  # Applied as zeroGradient at internal boundaries; walls do not have a fixed temperature.
-  # This is informational for the user.
-  wall_temperature: 0.0
 
 turbulence:
   # OpenFOAM simulation type written to turbulenceProperties.
@@ -221,6 +223,10 @@ optimization:
   # Mean temperature upper bound used only in pressure mode.
   # Leave null if you are not applying a mean-temperature constraint.
   meantT_max: null
+
+  # Dissipation power upper bound used only in heat mode (minimise meanT with a DissPower cap).
+  # Leave null to run unconstrained. The gradient contribution uses gsens_U.
+  dissPower_max: 300.0
 
   # Penalty multiplier for constraint violations.
   # Increase this if the optimizer keeps violating constraints.

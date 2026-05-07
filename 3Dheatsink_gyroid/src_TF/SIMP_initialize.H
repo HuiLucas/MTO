@@ -11,7 +11,13 @@
     scalar meanT(0);
     scalar V(0);
     scalar scalef(0),scaleg(0);
-    int i=0,j=0,k=0,jk,allcells,nallcells,mycells=0,iter=0,opt=1;
+    int opt(readScalar(transportProperties.lookup("opt")));
+   alphaMax.value() *= Foam::pow(4, opt-1);
+   alphaMax.value()=Foam::min(alphaMax.value(),5e6);//1e6,1e7
+   alphamax.value() *= Foam::pow(4, opt-1);
+   alphamax.value()=Foam::min(alphamax.value(),5e6);//1e6,1e7
+   Info<< "alphaMax: recalc " << alphaMax.value() << endl;
+    int i=0,j=0,k=0,jk,allcells,nallcells,mycells=0,iter=0;
     scalar allcell=gamma.size();//allcell:length of gamma in the i-th core
     allcells=static_cast<int>(allcell); 
     List<scalar> cellsize(Pstream::nProcs());
@@ -129,6 +135,45 @@
          }
       }
    }
+
+// Each MTO_TF invocation is a fresh process; gamma_densityfilter and eta5 are
+// plain C arrays/scalars that do not persist across runs.  Re-derive them here
+// from the gamma field that was written to disk by the previous run so that
+// Heaviside_sens.H has consistent values when opt > 1.
+{
+    List<scalarField> AllrInit(Pstream::nProcs());
+    scalarField localrInit(gamma.internalField());
+    AllrInit[Pstream::myProcNo()] = localrInit;
+    Pstream::gatherList(AllrInit);
+    Pstream::scatterList(AllrInit);
+    scalarField AllgammaInit
+    (
+        ListListOps::combine<scalarField>(AllrInit, accessOp<scalarField>())
+    );
+    for(jk=0;jk<nallcells;jk++)
+    {
+        double ad1=0.0, ad2=0.0;
+        for(int jj=0;jj<Nnum[jk];jj++)
+        {
+            ad1 += Nweight[jk][jj]*AllgammaInit[Nlabel[jk][jj]];
+            ad2 += Nweight[jk][jj];
+        }
+        gamma_densityfilter[jk] = (ad2>0.0) ? ad1/ad2 : AllgammaInit[jk];
+    }
+    // Recompute eta5 via the same bisection used in Heaviside_rho.H
+    double etaA=0.0001, etaB=1.0;
+    double yA=fun(gamma_densityfilter,del,etaA,nallcells);
+    for(int ii=1;ii<17;ii++)
+    {
+        eta5=(etaA+etaB)/2.0;
+        double yC=fun(gamma_densityfilter,del,eta5,nallcells);
+        if(yA*yC<0.0) { etaB=eta5; }
+        else { etaA=eta5; yA=yC; }
+    }
+    Info << "[init] gamma_densityfilter[0]=" << gamma_densityfilter[0]
+         << " eta5=" << eta5 << endl;
+}
+
 //***********************************//MMA
 int m=2;//m:number of constraints
 MMA mma(allcells,m);

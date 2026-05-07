@@ -1,9 +1,17 @@
 
 Info<<"sensitivity analysis"<<endl;
 
-fsens=-alphaMax*(1+qu)*qu/((qu+gamma)*(qu+gamma))*(U&Ub)+b1*(kf-ks)*(1+qu)*qu/((qu+gamma)*(qu+gamma))*(fvc::grad(T)&fvc::grad(Tb))/rhoc;
+Info<<"  [dbg] computing Darcy term (U&Ub)"<<endl;
+volScalarField darcyTerm(-alphaMax*(1+qu)*qu/((qu+gamma)*(qu+gamma))*(U&Ub));
+Info<<"  [dbg] computing thermal term grad(T)&grad(Tb)"<<endl;
+volScalarField thermalTerm(b1*(kf-ks)*(1+qu)*qu/((qu+gamma)*(qu+gamma))*(fvc::grad(T)&fvc::grad(Tb))/rhoc);
+Info<<"  [dbg] assembling fsens"<<endl;
+fsens = darcyTerm + thermalTerm;
+Info<<"  [dbg] max(|U|)=" << max(mag(U)).value() << " max(|Ub|)=" << max(mag(Ub)).value() << " max(|T|)=" << max(T).value() << " max(|Tb|)=" << max(Tb).value() << endl;
 
+Info<<"  [dbg] computing gsens_U"<<endl;
 gsens_U=-alphaMax*(1+qu)*qu/((qu+gamma)*(qu+gamma))*(U&Uc);
+Info<<"  [dbg] gsens_U done, entering Heaviside_sens"<<endl;
 
 #include "Heaviside_sens.H"
      

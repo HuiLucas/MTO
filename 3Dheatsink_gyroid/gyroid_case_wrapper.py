@@ -66,6 +66,7 @@ class MaterialProperties:
     solid_density_g_per_mm3: float
     darcy_number: float
     Texterior: float
+    hconv: float
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,6 @@ class TurbulenceProperties:
 @dataclass(frozen=True)
 class ThermalSettings:
     initial_temperature: float
-    wall_temperature: float
 
 
 @dataclass(frozen=True)
@@ -119,6 +119,7 @@ class OptimizationSettings:
     kbound: float
     mode: str
     meantT_max: float | None
+    dissPower_max: float | None
     mu_penalty: float
     am_filter: float
     am_theta: float
@@ -254,7 +255,6 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
     thermal_cfg = dict(config.get('thermal', {}))
     thermal = ThermalSettings(
         initial_temperature=float(thermal_cfg.get('initial_temperature', 0.0)),
-        wall_temperature=float(thermal_cfg.get('wall_temperature', 0.0)),
     )
 
     # Compute alphaMax from Darcy number if provided, otherwise use direct value.
@@ -270,7 +270,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
 
     props = MaterialProperties(
         nu=nu_value,
-        alpha_max=alpha_max_computed,
+        alpha_max=5000, # TODO: Change back to yaml input
         mma_init=float(_require(material_cfg, 'mma_init', 'material')),
         mma_dec=float(_require(material_cfg, 'mma_dec', 'material')),
         mma_inc=float(_require(material_cfg, 'mma_inc', 'material')),
@@ -282,7 +282,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         test_pd=float(_require(material_cfg, 'test_pd', 'material')),
         d_normalization=float(_require(material_cfg, 'd_normalization', 'material')),
         d0=float(_require(material_cfg, 'd0', 'material')),
-        d1=float(_require(material_cfg, 'd1', 'material')),
+        d1=float(optimization_cfg['dissPower_max']) if optimization_cfg.get('dissPower_max') is not None else float(material_cfg.get('d1', 4.0)),
         geo_dim=float(_require(material_cfg, 'geo_dim', 'material')),
         b1=float(_require(material_cfg, 'b1', 'material')),
         qu=float(_require(material_cfg, 'qu', 'material')),
@@ -292,7 +292,8 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         t_alpha=float(_require(material_cfg, 't_alpha', 'material')),
         solid_density_g_per_mm3=float(material_cfg.get('solid_density_g_per_mm3', SOLID_DENSITY_G_PER_MM3)),
         darcy_number=float(material_cfg.get('darcy_number', 0.0)),
-        Texterior=float(_require(material_cfg, 'Texterior', 'material')),  
+        Texterior=float(_require(material_cfg, 'Texterior', 'material')),
+        hconv=float(material_cfg.get('hconv', 10.0)),
     )
 
     optimisation = OptimizationSettings(
@@ -304,6 +305,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         kbound=float(optimization_cfg.get('kbound', 2.0)),
         mode=str(optimization_cfg.get('mode', 'heat')),
         meantT_max=optimization_cfg.get('meantT_max', None),
+        dissPower_max=optimization_cfg.get('dissPower_max', None),
         mu_penalty=float(optimization_cfg.get('mu_penalty', 100.0)),
         am_filter=float(optimization_cfg.get('am_filter', 0.15)),
         am_theta=float(optimization_cfg.get('am_theta', 45.0)),
@@ -827,7 +829,52 @@ boundaryField
     _write_text(case_dir / '0' / 'T', content)
 
 
-def write_transport_properties(constant_dir: Path, props: MaterialProperties) -> None:
+def write_initial_adjoint_temperature_field(case_dir: Path) -> None:
+    """Write Tb initial conditions with the correct adjoint BCs.
+
+    The adjoint heat equation uses -div(-phi, Tb) which transports Tb backward
+    (outlet → inlet). The outlet is therefore the adjoint inflow boundary and
+    must have Tb = 0 (no adjoint signal arriving from downstream). The inlet
+    is the adjoint outflow boundary and uses zeroGradient (natural outflow).
+    """
+    content = _foam_header('0', 'Tb', 'volScalarField')
+    content += """
+dimensions      [0 0 0 1 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inlet
+    {
+        type            zeroGradient;
+    }
+    outlet
+    {
+        type            fixedValue;
+        value           uniform 0;
+    }
+    wall
+    {
+        type            zeroGradient;
+    }
+    force
+    {
+        type            zeroGradient;
+    }
+    sym
+    {
+        type            symmetry;
+    }
+
+}
+
+// ************************************************************************* //
+"""
+    _write_text(case_dir / '0' / 'Tb', content)
+
+
+def write_transport_properties(constant_dir: Path, props: MaterialProperties, opt = 1) -> None:
     content = _foam_header('constant', 'transportProperties')
     content += f"""
 transportModel  Newtonian;
@@ -856,6 +903,7 @@ geo_dim                {props.geo_dim:.12g};
 
 b1                     b1 [0 2 -2 -2 0 0 0] {props.b1:.12g};
 qu                     {props.qu:.12g};
+opt                    {opt};
 
 
 // ************************************************************************* //
@@ -874,7 +922,7 @@ Talpha                   Taplha [0 0 0 -1 0 0 0] {props.t_alpha:.12g};
 
 Texterior                 Texterior [0 0 0 1 0 0 0] {props.Texterior:.12g};
 
-hconv                      hconv [1 0 -3 -1 0 0 0] 10;
+hconv                      hconv [1 0 -3 -1 0 0 0] {props.hconv:.12g};
 
 
 // ************************************************************************* //
@@ -924,6 +972,7 @@ def prepare_case(case_dir: Path, geometry: BoxGeometry, inlet: InletSettings, ou
     write_topo_set_dict(case_dir / 'system', geometry)
     write_initial_velocity_field(case_dir, geometry, inlet)
     write_initial_temperature_field(case_dir, inlet, thermal, outlet)
+    write_initial_adjoint_temperature_field(case_dir)
     write_control_dict(case_dir / 'system', solver)
     write_decompose_par_dict(case_dir / 'system', n_subdomains=n_subdomains)
     write_transport_properties(case_dir / 'constant', props)
@@ -937,6 +986,7 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
     sx, sy, sz = geometry.size_mm
     opt_min = np.array([ox, oy, oz], dtype=float)
     opt_max = np.array([ox + sx, oy + sy, oz + sz], dtype=float)
+    func_callback = lambda optvar : write_transport_properties(case_dir / 'constant', material, opt=optvar)
 
     return GyroidRBFOptimizer(
         case_dir=case_dir,
@@ -961,8 +1011,11 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
             use_thickness=not optimisation.no_thickness,
             mode=optimisation.mode,
             target_mass_g=optimisation.meantT_max,
+            target_disspower=optimisation.dissPower_max,
             mu_mass=optimisation.mu_penalty,
             solid_density_g_per_mm3=material.solid_density_g_per_mm3,
+            func_callback=func_callback,
+            opt = 1
     )
 
 
@@ -1158,6 +1211,10 @@ optimization:
     # Mean temperature upper bound used only in pressure mode.
     # Leave null if you do not want a temperature constraint.
     meantT_max: null
+
+    # Dissipation power upper bound used only in heat mode (minimise meanT with a DissPower cap).
+    # Leave null to run unconstrained. The gradient contribution uses gsens_U.
+    dissPower_max: null
 
     # Penalty multiplier for constraint violations in the optimizer.
     # Increase if constraints are violated too often.

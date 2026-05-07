@@ -866,6 +866,8 @@ class GyroidRBFOptimizer:
         mu_flow:           float = 100.0,
         mu_disspower:      float = 100.0,
         solid_density_g_per_mm3: float = SOLID_DENSITY_G_PER_MM3,
+        func_callback:       callable | None = None,  # Optional callback after each iteration: func(iter_num, history)
+        opt = 1,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -882,9 +884,13 @@ class GyroidRBFOptimizer:
         
         # ── Optimisation mode and constraints ──────────────────────────────────
         self.mode           = mode  # 'heat' or 'pressure'
-        self.meantT_max     = target_mass_g  # Max mean temperature (for constraint mode)
+        self.meantT_max     = target_mass_g    # max meanT constraint (pressure mode)
+        self.dissPower_max  = target_disspower # max DissPower constraint (heat mode)
         self.mu_penalty     = mu_mass  # Penalty multiplier for constraints
         self._mu_adaptive   = mu_mass  # Adaptive penalty that increases if constraints violated
+
+        self.func_callback   = func_callback  # Optional callback after each iteration
+        self.opt = opt 
 
         if k_base - k_amp_bound <= 0:
             raise ValueError(
@@ -1015,6 +1021,9 @@ class GyroidRBFOptimizer:
         - 'pressure': minimize DissPower, read gsens_U, apply penalty for meanT constraint
         """
         t0 = time.time()
+        print('OptPrint:', self.opt)
+        self.func_callback(self.opt)
+        self.opt += 1
         eval_iter = self._accepted_iter + 1
         print(f"\n{'─'*60}")
         print(f"Outer iteration {eval_iter}  [mode: {self.mode}]")
@@ -1087,7 +1096,7 @@ class GyroidRBFOptimizer:
         J_aug = float(J_obj)
         fsens_aug = fsens_norm.copy()
 
-        # Constraint penalties (for 'pressure' mode, penalize meanT constraint violation)
+        # Constraint penalties
         constraint_info = {}
         if self.mode == 'pressure' and self.meantT_max is not None:
             # Penalty on meanT constraint: J += mu * max(0, meanT - meanT_max)^2
@@ -1096,9 +1105,7 @@ class GyroidRBFOptimizer:
             pen_meanT = mu_adaptive * constraint_viol ** 2
             J_aug += pen_meanT
             constraint_info['g_meanT'] = meanT
-            constraint_info['meanT_max'] = self.meantT_max
             constraint_info['pen_meanT'] = pen_meanT
-            constraint_info['mu_adaptive'] = mu_adaptive
 
             meanT_sens_base = read_adjoint_sensitivity(self.case_dir, 'fsens')
             if not hasattr(self, '_meanT_sens_ref'):
@@ -1106,17 +1113,35 @@ class GyroidRBFOptimizer:
                 if self._meanT_sens_ref == 0:
                     self._meanT_sens_ref = 1.0
             meanT_sens_norm = meanT_sens_base / self._meanT_sens_ref
-            
-            # Add gradient contribution for meanT penalty: d(mu*g²)/d(gamma) = 2*mu*g * dg/dgamma
             if constraint_viol > 0.0:
-                fsens_meantT = 2.0 * mu_adaptive * constraint_viol * meanT_sens_norm
-                fsens_aug += fsens_meantT
-                
+                fsens_aug += 2.0 * mu_adaptive * constraint_viol * meanT_sens_norm
+
             print(f"  meanT_constraint: g={meanT:.6g} (limit {self.meantT_max:.6g}), "
                   f"viol={constraint_viol:.6g}, pen={pen_meanT:.6g}, μ={mu_adaptive:.2f}")
-            
-            # Adaptively increase penalty if constraint is violated (basic adaptive penalty)
             next_mu_adaptive = mu_adaptive * 1.1 if constraint_viol > 1e-6 else mu_adaptive
+
+        elif self.mode == 'heat' and self.dissPower_max is not None:
+            # Penalty on DissPower constraint: J += mu * max(0, dissPower - dissPower_max)^2
+            constraint_viol = max(0.0, dissPower - self.dissPower_max)
+            mu_adaptive = self._mu_adaptive
+            pen_disspower = mu_adaptive * constraint_viol ** 2
+            J_aug += pen_disspower
+            constraint_info['g_disspower'] = dissPower
+            constraint_info['pen_disspower'] = pen_disspower
+
+            dp_sens_base = read_adjoint_sensitivity(self.case_dir, 'gsens_U')
+            if not hasattr(self, '_dp_sens_ref'):
+                self._dp_sens_ref = float(np.abs(dp_sens_base).max())
+                if self._dp_sens_ref == 0:
+                    self._dp_sens_ref = 1.0
+            dp_sens_norm = dp_sens_base / self._dp_sens_ref
+            if constraint_viol > 0.0:
+                fsens_aug += 2.0 * mu_adaptive * constraint_viol * dp_sens_norm
+
+            print(f"  disspower_constraint: g={dissPower:.6g} (limit {self.dissPower_max:.6g}), "
+                  f"viol={constraint_viol:.6g}, pen={pen_disspower:.6g}, μ={mu_adaptive:.2f}")
+            next_mu_adaptive = mu_adaptive * 1.1 if constraint_viol > 1e-6 else mu_adaptive
+
         else:
             next_mu_adaptive = self._mu_adaptive
 
@@ -1152,7 +1177,7 @@ class GyroidRBFOptimizer:
               f"fsens_ref = {self._fsens_ref:.4g}")
 
         self._history.append(dict(
-            iter=eval_iter, 
+            iter=eval_iter,
             J=meanT, J_aug=J_aug, J_obj=J_obj,
             dissPower=dissPower, vol=vol_use,
             solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP, outletT=outletT,
@@ -1164,6 +1189,8 @@ class GyroidRBFOptimizer:
             pen_th=am_info.get('pen_th', 0.0),
             g_meanT=constraint_info.get('g_meanT', float('nan')),
             pen_meanT=constraint_info.get('pen_meanT', 0.0),
+            g_disspower=constraint_info.get('g_disspower', float('nan')),
+            pen_disspower=constraint_info.get('pen_disspower', 0.0),
             mu_adaptive=self._mu_adaptive,
             mu_oh=(self.am.mu_oh if self.am is not None else float('nan')),
             mu_th=(self.am.mu_th if self.am is not None else float('nan')),
@@ -1202,7 +1229,8 @@ class GyroidRBFOptimizer:
         with open(hist_path, 'w') as f:
             f.write(
                 "iter  mode    J_meanT      J_obj        J_aug        DissPower     outletT    solid_frac  "
-                "solid_g    flow_m3s   deltaP_m2s2  wall_thickness  g_meanT    pen_meanT  mu_meanT  "
+                "solid_g    flow_m3s   deltaP_m2s2  wall_thickness  g_meanT    pen_meanT  "
+                "g_disspower  pen_disspower  mu_penalty  "
                 "g_oh    pen_oh    mu_oh    g_th    pen_th    mu_th    grad_norm  elapsed_s\n"
             )
             for h in self._history:
@@ -1219,7 +1247,9 @@ class GyroidRBFOptimizer:
                     f"{h.get('wall_thickness', 0.0):14.4f}  "
                     f"{h.get('g_meanT', float('nan')):10.4g}  "
                     f"{h.get('pen_meanT', 0.0):10.4g}  "
-                    f"{h.get('mu_adaptive', float('nan')):8.4g}  "
+                    f"{h.get('g_disspower', float('nan')):12.4g}  "
+                    f"{h.get('pen_disspower', 0.0):13.4g}  "
+                    f"{h.get('mu_adaptive', float('nan')):10.4g}  "
                     f"{h.get('g_oh', 0.0):8.4g}  "
                     f"{h.get('pen_oh', 0.0):9.4g}  "
                     f"{h.get('mu_oh', float('nan')):9.4g}  "
@@ -1363,6 +1393,8 @@ def main() -> None:
                              "'pressure' minimize DissPower")
     parser.add_argument('--meantT-max', type=float, default=None,
                         help='Upper bound on meanT (constraint, only used in pressure mode)')
+    parser.add_argument('--disspower-max', type=float, default=None,
+                        help='Upper bound on DissPower (constraint, only used in heat mode)')
     parser.add_argument('--mu-penalty', type=float, default=100.0,
                         help='Initial penalty multiplier for constraints (default: 100.0)')
     args = parser.parse_args()
@@ -1394,9 +1426,10 @@ def main() -> None:
         am_mu_thickness = args.mu_thickness,
         use_overhang    = not args.no_overhang,
         use_thickness   = not args.no_thickness,
-        mode            = args.mode,
-        target_mass_g   = args.meantT_max,
-        mu_mass         = args.mu_penalty,
+        mode             = args.mode,
+        target_mass_g    = args.meantT_max,
+        target_disspower = args.disspower_max,
+        mu_mass          = args.mu_penalty,
         solid_density_g_per_mm3 = args.solid_density,
     )
     opt.run(n_iters=args.iters, load_ctrl=warm)

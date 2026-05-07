@@ -38,23 +38,35 @@ for(i=0;i<allcells;i++)
 Foam::reduce(scalef, Foam::maxOp<Foam::scalar>());
 Foam::reduce(scaleg, Foam::maxOp<Foam::scalar>());
 
+// Guard against zero sensitivities (e.g. near-uniform T field).
+if (scalef < SMALL) { scalef = 1.0; Info << "Warning: scalef~0, sensitivities are degenerate" << endl; }
+if (scaleg < SMALL) { scaleg = 1.0; Info << "Warning: scaleg~0, sensitivities are degenerate" << endl; }
+Info << "[dbg-hs] scalef=" << scalef << " scaleg=" << scaleg << " eta5=" << eta5 << " del=" << del << endl;
+
+// gsens must be zeroed for opt==1 (uninitialized heap memory → potential NaN → SIGFPE)
+for(i=0;i<nallcells;i++) gsens[i]=0.0;
+
+Info << "[dbg-hs] A: gsens zeroed, entering opt>1 drho block (opt=" << opt << ")" << endl;
+
 if(opt>1)
 {
   for(i=0;i<nallcells;i++)
   {
      if(gamma_densityfilter[i]<=eta5)
      {
-       drho[i]=del*Foam::exp(-del*(1-gamma_densityfilter[i]/eta5))+Foam::exp(-del); 
+       drho[i]=del*Foam::exp(-del*(1-gamma_densityfilter[i]/eta5))+Foam::exp(-del);
      }
      else
      {
-       drho[i]=del*Foam::exp(-del*(gamma_densityfilter[i]-eta5)/(1-eta5))+Foam::exp(-del); 
-     } 
+       drho[i]=del*Foam::exp(-del*(gamma_densityfilter[i]-eta5)/(1-eta5))+Foam::exp(-del);
+     }
      Allfsens[i]=Allfsens[i]*drho[i];
      Allgusens[i]=Allgusens[i]*drho[i];
      gsens[i]=1.0/nallcells*drho[i];
   }
 }
+
+Info << "[dbg-hs] B: drho block done, entering Faa loop" << endl;
 
 for(i=0;i<nallcells;i++)//ith node
      {
@@ -75,6 +87,9 @@ for(i=0;i<nallcells;i++)//ith node
            Gdd[i]=Gdd[i]+gsens[Nlabel[i][j]]*add1/add2;
          }
       }
+
+Info << "[dbg-hs] C: Faa loop done, entering copy-back block" << endl;
+
      if(opt>1)
      {
         for(i=0;i<allcells;i++)
@@ -82,5 +97,7 @@ for(i=0;i<nallcells;i++)//ith node
            fsens[i]=Faa[i+mycells];
            gsens_U[i]=Gbb[i+mycells];
            gsens[i]=Gdd[i+mycells];
-        }          
+        }
      }
+
+Info << "[dbg-hs] D: copy-back done" << endl;
