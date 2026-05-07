@@ -25,20 +25,20 @@ FoamFile
     outlet
     {
         type            patch;
-        nFaces          144;
+        nFaces          128;
         startFace       148800;
     }
     wall
     {
         type            patch;
-        nFaces          3696;
-        startFace       148944;
+        nFaces          2752;
+        startFace       148928;
     }
     force
     {
         type            patch;
-        nFaces          1600;
-        startFace       152640;
+        nFaces          2560;
+        startFace       151680;
     }
     sym
     {

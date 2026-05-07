@@ -78,7 +78,7 @@ outlet:
   # Rectangular outlet window origin on the chosen face, in mm.
   # The coordinates are local to the face and ordered by the two transverse axes.
   # For flow_axis: x -> [y0, z0], y -> [x0, z0], z -> [x0, y0].
-  window_origin_mm: [1.5, 9.5]
+  window_origin_mm: [4.0, 2.0]
 
   # Rectangular outlet window size on the chosen face, in mm.
   # Increase to open more of the face; decrease to force outflow through a smaller area.
@@ -151,7 +151,7 @@ material:
   # where L is the geometric mean of the two transverse (perpendicular-to-flow) dimensions.
   # Set to 0.0 to disable and use the direct alpha_max value instead.
   # This relationship is computed once during case preparation and written as alphaMax.
-  darcy_number: 1.6e-8
+  darcy_number: 1.6e-10
 
   # Fluid density in kg/m³ (for future use; currently informational only).
   # This does not affect the current incompressible solver equations.

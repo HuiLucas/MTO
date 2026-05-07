@@ -9,6 +9,12 @@ wmake
 
 If the build succeeds, the optimiser is ready to run with a YAML configuration file.
 
+## Clean the directory from a previous run
+In 3Dheatsink_gyroid, run:
+```bash
+python clean_for_gyroid.py
+```
+
 ## Using the YAML file to run the optimiser
 
 The YAML file is the optimiser's runtime configuration. It usually defines:
@@ -26,3 +32,10 @@ python gyroid_case_wrapper.py --config gyroid_case_config.yaml
 ```
 
 Read the yaml file to choose the correct inputs
+
+## TODO:
+- Make AlphaMax go up through the iterations from a low number
+- Remove heat source Q, add surface heating
+- Make other geometries possible
+- Make robust
+- Make comparison cases (i.e. just a beam in the middle, or un deformed Gyroid) for thermal performance

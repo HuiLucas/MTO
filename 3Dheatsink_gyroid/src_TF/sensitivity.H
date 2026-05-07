@@ -16,14 +16,14 @@ for(i=0;i<allcells;i++)
   dgdx[0][i]=gsens_U[i]/scaleg/nallcells;
   dgdx[1][i]=gsens[i];
 }
+Info<< "Max(D0-opt*0.2,D1): " << Foam::max(D0-opt*0.2,D1) << endl;
+//Info<< "\nrun mmasub\n" << endl;
+//mma.MMAsolver(xmma, dfdx, gx, dgdx);
 
-Info<< "\nrun mmasub\n" << endl;
-mma.MMAsolver(xmma, dfdx, gx, dgdx);
-
-for(i=0;i<allcells;i++)
-{
-  gamma[i]=xmma[i];
-}
+//for(i=0;i<allcells;i++)
+//{
+//  gamma[i]=xmma[i];
+//}
 
 #include "Heaviside_rho.H"
 

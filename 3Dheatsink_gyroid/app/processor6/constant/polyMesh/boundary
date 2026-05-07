@@ -31,21 +31,21 @@ FoamFile
     wall
     {
         type            patch;
-        nFaces          3840;
+        nFaces          1280;
         startFace       148800;
     }
     force
     {
         type            patch;
         nFaces          0;
-        startFace       152640;
+        startFace       150080;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
-        nFaces          0;
-        startFace       152640;
+        nFaces          2560;
+        startFace       150080;
     }
     procBoundary6to4
     {

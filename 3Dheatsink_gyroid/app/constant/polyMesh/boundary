@@ -19,33 +19,33 @@ FoamFile
     inlet
     {
         type            patch;
-        nFaces          144;
+        nFaces          153;
         startFace       1513600;
     }
     outlet
     {
         type            patch;
-        nFaces          144;
-        startFace       1513744;
+        nFaces          128;
+        startFace       1513753;
     }
     wall
     {
         type            patch;
-        nFaces          38112;
-        startFace       1513888;
+        nFaces          18919;
+        startFace       1513881;
     }
     force
     {
         type            patch;
-        nFaces          3200;
-        startFace       1552000;
+        nFaces          12800;
+        startFace       1532800;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
-        nFaces          3200;
-        startFace       1555200;
+        nFaces          12800;
+        startFace       1545600;
     }
 )
 

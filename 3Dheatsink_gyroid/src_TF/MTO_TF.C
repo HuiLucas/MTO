@@ -85,7 +85,50 @@ int main(int argc, char *argv[])
         {
            #include "adjoint_flow_U.H" 
         }   
-        #include "costfunction.H"                           
+        #include "costfunction.H"  
+        double outletBulkTemperature
+        (
+            const fvMesh& mesh,
+            const volScalarField& T,
+            const surfaceScalarField& phi
+        )
+        {
+            const label outletPatchID = mesh.boundaryMesh().findPatchID("outlet");
+
+            if (outletPatchID < 0)
+            {
+                Info << "Warning: outlet patch not found, returning 0 for outlet temperature" << endl;
+                return 0.0;
+            }
+
+            const scalarField& outletT   = T.boundaryField()[outletPatchID];
+            const scalarField& outletPhi  = phi.boundaryField()[outletPatchID];
+
+            scalar num = 0.0;
+            scalar den = 0.0;
+
+            forAll(outletT, faceI)
+            {
+                const scalar flux = outletPhi[faceI];
+
+                if (flux > SMALL)
+                {
+                    num += flux * outletT[faceI];
+                    den += flux;
+                }
+            }
+
+            reduce(num, sumOp<scalar>());
+            reduce(den, sumOp<scalar>());
+
+            if (den <= SMALL)
+            {
+                Info << "Warning: outlet flux is zero or negative, returning 0 for outlet temperature" << endl;
+                return 0.0;
+            }
+
+            return num / den;
+        }                         
         #include "sensitivity.H"        
         if(runTime.writeTime())
         {
