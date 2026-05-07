@@ -699,8 +699,8 @@ def run_openfoam_one_step(case_dir: Path,
         backup_latest_fluid_state(case_dir)
 
 
-def read_objective(case_dir: Path) -> tuple[float, float, float, float]:
-    """Read the latest meanT, DissPower, massflow and deltaP from text files."""
+def read_objective(case_dir: Path) -> tuple[float, float, float, float, float]:
+    """Read the latest meanT, DissPower, massflow, deltaP and outletT from text files."""
     def _last(fname):
         p = case_dir / fname
         if not p.exists():
@@ -708,7 +708,7 @@ def read_objective(case_dir: Path) -> tuple[float, float, float, float]:
         lines = [l.strip() for l in p.read_text().splitlines() if l.strip()]
         return float(lines[-1]) if lines else float('nan')
     return (_last('meanT.txt'), _last('Disspower.txt'),
-            _last('massflow.txt'), _last('deltaP.txt'))
+            _last('massflow.txt'), _last('deltaP.txt'), _last('outletT.txt'))
 
 
 def read_adjoint_sensitivity(case_dir: Path, sens_name: str = 'fsens') -> np.ndarray:
@@ -1057,7 +1057,7 @@ class GyroidRBFOptimizer:
             # Minimize meanT: read fsens
             fsens_base = read_adjoint_sensitivity(self.case_dir, 'fsens')
 
-        meanT, dissPower, massflow, deltaP = read_objective(self.case_dir)
+        meanT, dissPower, massflow, deltaP, outletT = read_objective(self.case_dir)
 
         vol_use    = 1.0 - gamma.mean()
         solid_mass = self.solid_density_g_per_mm3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
@@ -1070,6 +1070,7 @@ class GyroidRBFOptimizer:
         print(f"  DissPower      = {dissPower:.6g}")
         print(f"  flow_rate      = {massflow:.6g} m³/s")
         print(f"  deltaP         = {deltaP:.6g} m²/s²  (kinematic pressure drop)")
+        print(f"  outletT        = {outletT:.6g} K")
         print(f"  solid_mass     = {solid_mass:.4f} g  (aluminium, half-symmetry domain)")
         print(f"  solid_fraction = {vol_use:.4f}")
         print(f"  ||sens||_inf   = {np.abs(fsens_base).max():.4g}")
@@ -1154,7 +1155,7 @@ class GyroidRBFOptimizer:
             iter=eval_iter, 
             J=meanT, J_aug=J_aug, J_obj=J_obj,
             dissPower=dissPower, vol=vol_use,
-            solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP,
+            solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP, outletT=outletT,
             mode=self.mode,
             wall_thickness=self.wall_thickness,
             g_oh=am_info.get('g_oh', 0.0),
@@ -1200,7 +1201,7 @@ class GyroidRBFOptimizer:
         hist_path = self.case_dir / 'gyroid_opt_history.txt'
         with open(hist_path, 'w') as f:
             f.write(
-                "iter  mode    J_meanT      J_obj        J_aug        DissPower    solid_frac  "
+                "iter  mode    J_meanT      J_obj        J_aug        DissPower     outletT    solid_frac  "
                 "solid_g    flow_m3s   deltaP_m2s2  wall_thickness  g_meanT    pen_meanT  mu_meanT  "
                 "g_oh    pen_oh    mu_oh    g_th    pen_th    mu_th    grad_norm  elapsed_s\n"
             )
@@ -1210,6 +1211,7 @@ class GyroidRBFOptimizer:
                     f"{h.get('J_obj', h['J']):12.6g}  "
                     f"{h.get('J_aug', h['J']):12.6g}  "
                     f"{h.get('dissPower', float('nan')):12.6g}  "
+                    f"{h.get('outletT', float('nan')):12.6g}  "
                     f"{h['vol']:10.4f}  "
                     f"{h.get('solid_mass', float('nan')):9.4f}  "
                     f"{h.get('flow_rate', float('nan')):10.4g}  "

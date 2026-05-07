@@ -65,6 +65,7 @@ class MaterialProperties:
     t_alpha: float
     solid_density_g_per_mm3: float
     darcy_number: float
+    Texterior: float
 
 
 @dataclass(frozen=True)
@@ -263,7 +264,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
     if darcy_number_value > 0.0:
         transverse_sizes_array = np.array(transverse_sizes, dtype=float)
         L_characteristic = math.sqrt(transverse_sizes_array[0] * transverse_sizes_array[1])
-        alpha_max_computed = nu_value / (L_characteristic**2 * darcy_number_value)
+        alpha_max_computed = nu_value / (L_characteristic**2 * darcy_number_value) * 10e6
     else:
         alpha_max_computed = float(_require(material_cfg, 'alpha_max', 'material'))
 
@@ -291,6 +292,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         t_alpha=float(_require(material_cfg, 't_alpha', 'material')),
         solid_density_g_per_mm3=float(material_cfg.get('solid_density_g_per_mm3', SOLID_DENSITY_G_PER_MM3)),
         darcy_number=float(material_cfg.get('darcy_number', 0.0)),
+        Texterior=float(_require(material_cfg, 'Texterior', 'material')),  
     )
 
     optimisation = OptimizationSettings(
@@ -869,6 +871,10 @@ ks                           ks [1 1 -3 -1 0 0 0] {props.ks:.12g};
 rhoc                       rhoc [1 -1 -2 -1 0 0 0] {props.rhoc:.12g};
 
 Talpha                   Taplha [0 0 0 -1 0 0 0] {props.t_alpha:.12g};
+
+Texterior                 Texterior [0 0 0 1 0 0 0] {props.Texterior:.12g};
+
+hconv                      hconv [1 0 -3 -1 0 0 0] 10;
 
 
 // ************************************************************************* //

@@ -59,10 +59,55 @@ void setCells
         vf[cells[i]] = value;
     }
 }
+
+scalar outletBulkTemperature
+(
+    const fvMesh& mesh,
+    const volScalarField& T,
+    const surfaceScalarField& phi
+)
+{
+    const label outletPatchID = mesh.boundaryMesh().findPatchID("outlet");
+
+    if (outletPatchID < 0)
+    {
+        Info << "Warning: outlet patch not found, returning 0 for outlet temperature" << endl;
+        return 0.0;
+    }
+
+    const scalarField& outletT   = T.boundaryField()[outletPatchID];
+    const scalarField& outletPhi  = phi.boundaryField()[outletPatchID];
+
+    scalar num = 0.0;
+    scalar den = 0.0;
+
+    forAll(outletT, faceI)
+    {
+        const scalar flux = outletPhi[faceI];
+
+        if (flux > SMALL)
+        {
+            num += flux * outletT[faceI];
+            den += flux;
+        }
+    }
+
+    reduce(num, sumOp<scalar>());
+    reduce(den, sumOp<scalar>());
+
+    if (den <= SMALL)
+    {
+        Info << "Warning: outlet flux is zero or negative, returning 0 for outlet temperature" << endl;
+        return 0.0;
+    }
+
+    return num / den;
+}
 double fun(double gamma[],double del,double eta,int allcells);
 int main(int argc, char *argv[])
 {
     #include "setRootCase.H"
+    
     #include "createTime.H"
     #include "createMesh.H"
     #include "createControl.H"
@@ -85,50 +130,10 @@ int main(int argc, char *argv[])
         {
            #include "adjoint_flow_U.H" 
         }   
+        scalar outletT_bulk = outletBulkTemperature(mesh, T, phi);
+        Info << "Outlet bulk temperature (K): " << outletT_bulk << endl;
         #include "costfunction.H"  
-        double outletBulkTemperature
-        (
-            const fvMesh& mesh,
-            const volScalarField& T,
-            const surfaceScalarField& phi
-        )
-        {
-            const label outletPatchID = mesh.boundaryMesh().findPatchID("outlet");
-
-            if (outletPatchID < 0)
-            {
-                Info << "Warning: outlet patch not found, returning 0 for outlet temperature" << endl;
-                return 0.0;
-            }
-
-            const scalarField& outletT   = T.boundaryField()[outletPatchID];
-            const scalarField& outletPhi  = phi.boundaryField()[outletPatchID];
-
-            scalar num = 0.0;
-            scalar den = 0.0;
-
-            forAll(outletT, faceI)
-            {
-                const scalar flux = outletPhi[faceI];
-
-                if (flux > SMALL)
-                {
-                    num += flux * outletT[faceI];
-                    den += flux;
-                }
-            }
-
-            reduce(num, sumOp<scalar>());
-            reduce(den, sumOp<scalar>());
-
-            if (den <= SMALL)
-            {
-                Info << "Warning: outlet flux is zero or negative, returning 0 for outlet temperature" << endl;
-                return 0.0;
-            }
-
-            return num / den;
-        }                         
+                            
         #include "sensitivity.H"        
         if(runTime.writeTime())
         {

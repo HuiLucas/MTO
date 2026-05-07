@@ -29,6 +29,8 @@ run:
   # Increase for a longer optimization run; decrease for a quick test.
   iters: 50
 
+  
+
 geometry:
   # Lower corner of the box domain in mm.
   # Move this when the design domain does not start at the global origin.
@@ -140,7 +142,7 @@ material:
   # Change these whenever the simulated material or fluid changes.
   kf: 0.61
   ks: 237.0
-  rhoc: 4180000.0
+  rhoc: 4180000.0 # rho times c_p
   t_alpha: 2.0e-5
 
   # Density used only for reporting estimated solid mass of the heat exchanger in the wrapper output.
@@ -151,11 +153,13 @@ material:
   # where L is the geometric mean of the two transverse (perpendicular-to-flow) dimensions.
   # Set to 0.0 to disable and use the direct alpha_max value instead.
   # This relationship is computed once during case preparation and written as alphaMax.
-  darcy_number: 1.6e-10
+  darcy_number: 1.6e-8
 
   # Fluid density in kg/m³ (for future use; currently informational only).
   # This does not affect the current incompressible solver equations.
   rho_fluid: 1000.0
+
+  Texterior: 100.0
 
 thermal:
   # Initial domain temperature in K (for internal fields).

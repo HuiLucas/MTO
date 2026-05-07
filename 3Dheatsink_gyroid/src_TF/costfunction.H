@@ -95,4 +95,10 @@ std::ofstream outfile6("deltaP.txt",std::ios::app);
 outfile6<<deltaP<<"\n";
 outfile6.close();
 
+if (Pstream::master())
+        {
+            std::ofstream outfile7("outletT.txt", std::ios::app);
+            outfile7 << outletT_bulk << "\n";
+            outfile7.close();
+        }
 }
