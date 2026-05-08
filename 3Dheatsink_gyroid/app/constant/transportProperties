@@ -18,8 +18,8 @@ FoamFile
 transportModel  Newtonian;
 // fluid
 nu                           nu [0 2 -1 0 0 0 0] 1e-06;
-alphaMax               alphaMax [0 0 -1 0 0 0 0] 5000;
-alphamax               alphamax [0 0 -1 0 0 0 0] 5000;
+alphaMax               alphaMax [0 0 -1 0 0 0 0] 5000000;
+alphamax               alphamax [0 0 -1 0 0 0 0] 5000000;
 
 // opt
 raa0                   0.5;
@@ -35,13 +35,13 @@ fluid_area             1;
 test_PD                0;
 
 D_normalization        1e-09;
-D0                     310;
-D1                     300;
+D0                     160;
+D1                     150;
 geo_dim                3;
 
 b1                     b1 [0 2 -2 -2 0 0 0] 1;
 qu                     0.005;
-opt                    4;
+opt                    1;
 
 
 // ************************************************************************* //

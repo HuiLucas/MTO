@@ -270,7 +270,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
 
     props = MaterialProperties(
         nu=nu_value,
-        alpha_max=5000, # TODO: Change back to yaml input
+        alpha_max=5000000, # TODO: Change back to yaml input
         mma_init=float(_require(material_cfg, 'mma_init', 'material')),
         mma_dec=float(_require(material_cfg, 'mma_dec', 'material')),
         mma_inc=float(_require(material_cfg, 'mma_inc', 'material')),

@@ -1023,7 +1023,7 @@ class GyroidRBFOptimizer:
         t0 = time.time()
         print('OptPrint:', self.opt)
         self.func_callback(self.opt)
-        self.opt += 1
+        #self.opt += 1
         eval_iter = self._accepted_iter + 1
         print(f"\n{'─'*60}")
         print(f"Outer iteration {eval_iter}  [mode: {self.mode}]")
@@ -1122,9 +1122,9 @@ class GyroidRBFOptimizer:
 
         elif self.mode == 'heat' and self.dissPower_max is not None:
             # Penalty on DissPower constraint: J += mu * max(0, dissPower - dissPower_max)^2
-            constraint_viol = max(0.0, dissPower - self.dissPower_max)
+            constraint_viol = max(0.0, dissPower - self.dissPower_max)/dissPower
             mu_adaptive = self._mu_adaptive
-            pen_disspower = mu_adaptive * constraint_viol ** 2
+            pen_disspower = mu_adaptive * constraint_viol ** 2 * 50
             J_aug += pen_disspower
             constraint_info['g_disspower'] = dissPower
             constraint_info['pen_disspower'] = pen_disspower
@@ -1136,7 +1136,7 @@ class GyroidRBFOptimizer:
                     self._dp_sens_ref = 1.0
             dp_sens_norm = dp_sens_base / self._dp_sens_ref
             if constraint_viol > 0.0:
-                fsens_aug += 2.0 * mu_adaptive * constraint_viol * dp_sens_norm
+                fsens_aug -= 2.0 * mu_adaptive * constraint_viol * dp_sens_norm
 
             print(f"  disspower_constraint: g={dissPower:.6g} (limit {self.dissPower_max:.6g}), "
                   f"viol={constraint_viol:.6g}, pen={pen_disspower:.6g}, μ={mu_adaptive:.2f}")

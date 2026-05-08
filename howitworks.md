@@ -36,6 +36,8 @@ Read the yaml file to choose the correct inputs
 ## TODO:
 - Make AlphaMax go up through the iterations from a low number (AlphaMax is now hardcoded to 5000 initially, goes up to 5e6 through the iterations)
 - Remove heat source Q, add surface heating
+- Maybe a new fsens that is for minmizing outlet temp instead of meanT
 - Make other geometries possible
 - Make robust
 - Make comparison cases (i.e. just a beam in the middle, or un deformed Gyroid) for thermal performance
+- Adjust penalty size

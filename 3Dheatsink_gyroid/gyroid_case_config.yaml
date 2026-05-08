@@ -132,8 +132,8 @@ material:
   # Legacy normalization and penalty coefficients used inside the solver.
   # Only change these if the backend equations or scaling change.
   d_normalization: 1.0e-9
-  d0: 310.0
-  d1: 300.0
+  d0: 160.0
+  d1: 150.0
   geo_dim: 3.0
   b1: 1.0
   qu: 0.005
@@ -226,7 +226,7 @@ optimization:
 
   # Dissipation power upper bound used only in heat mode (minimise meanT with a DissPower cap).
   # Leave null to run unconstrained. The gradient contribution uses gsens_U.
-  dissPower_max: 300.0
+  dissPower_max: 150.0
 
   # Penalty multiplier for constraint violations.
   # Increase this if the optimizer keeps violating constraints.
