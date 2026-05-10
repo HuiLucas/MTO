@@ -1136,7 +1136,7 @@ class GyroidRBFOptimizer:
                     self._dp_sens_ref = 1.0
             dp_sens_norm = dp_sens_base / self._dp_sens_ref
             if constraint_viol > 0.0:
-                fsens_aug -= 2.0 * mu_adaptive * constraint_viol * dp_sens_norm
+                fsens_aug += 2.0 * mu_adaptive * constraint_viol * dp_sens_norm * 50
 
             print(f"  disspower_constraint: g={dissPower:.6g} (limit {self.dissPower_max:.6g}), "
                   f"viol={constraint_viol:.6g}, pen={pen_disspower:.6g}, μ={mu_adaptive:.2f}")
