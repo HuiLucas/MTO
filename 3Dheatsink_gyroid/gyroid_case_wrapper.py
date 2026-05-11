@@ -1264,6 +1264,7 @@ def main() -> None:
     parser.add_argument('--postprocess', default=None, help='Override the postProcess binary from the config')
     parser.add_argument('--skip-clean', action='store_true', help='Skip the cleanup step before preparing the case')
     parser.add_argument('--iters', type=int, default=None, help='Override the iteration count from the config')
+    parser.add_argument('--load-ctrl', default=None, metavar='FILE', help='Warm-start from a previous gyroid_ctrl_pts_*.txt file')
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -1302,8 +1303,9 @@ def main() -> None:
     if run.parallel > 1:
         run_command(['decomposePar', '-force', '-case', str(case_dir)], cwd=case_dir)
 
+    load_ctrl = Path(args.load_ctrl).resolve() if args.load_ctrl else None
     optimiser = build_optimizer(case_dir, geometry, run, optimisation, props)
-    optimiser.run(n_iters=run.iters)
+    optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl)
 
 
 if __name__ == '__main__':

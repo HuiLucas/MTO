@@ -1311,7 +1311,7 @@ class GyroidRBFOptimizer:
             jac=True,
             bounds=self.bounds,
             callback=self._on_accepted_step,
-            options=dict(maxiter=n_iters, ftol=1e-30, gtol=1e-4, iprint=1),
+            options=dict(maxiter=n_iters, ftol=1e-30, gtol=1e-8, maxls=50, iprint=1),
         )
 
         print(f"\nOptimisation finished: {result.message}")

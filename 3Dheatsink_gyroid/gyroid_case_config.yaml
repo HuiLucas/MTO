@@ -213,7 +213,7 @@ optimization:
 
   # Allowed frequency perturbation amplitude in rad/mm.
   # Increase only if you need stronger geometric variation.
-  kbound: 2.0
+  kbound: 4.0
 
   # Optimization mode.
   # heat: minimize mean temperature.
