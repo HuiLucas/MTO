@@ -195,9 +195,11 @@ optimization:
   # This sets the base TPMS frequency; change it to make the lattice finer or coarser.
   unit: 1.5
 
-  # Gyroid wall thickness in mm.
-  # Increase it for thicker struts; decrease it for a more open structure.
-  wall: 0.30
+  # Minimum physical wall thickness in mm (guaranteed worst-case).
+  # The G-threshold is computed as: 0.5 × wall × (k_base + kbound) × √3
+  # so that even at triple points (max gyroid gradient) and max k, the wall is
+  # at least this thick.  Note: walls away from triple points will be thicker.
+  wall: 0.041
 
   # Smooth-Heaviside sharpness in mm.
   # Smaller values make the gamma transition sharper; larger values make it smoother. See the paper pdf.
@@ -232,8 +234,8 @@ optimization:
   # Increase this if the optimizer keeps violating constraints.
   mu_penalty: 100.0
 
-  # AM overhang filter radius in mm.
-  # Used only when the overhang constraint is enabled.
+  # AM overhang and thickness filter radius in mm.
+  # Used only when the overhang or thickness constraints are enabled.
   am_filter: 0.15
 
   # Maximum overhang angle in degrees.

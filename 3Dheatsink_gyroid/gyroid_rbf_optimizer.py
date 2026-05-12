@@ -70,8 +70,23 @@ OPT_ZMIN, OPT_ZMAX = 0.0, 10.0
 
 # Gyroid TPMS parameters
 F_UNIT_SIZE      = 1.5    # TPMS cell size (mm) – sets base frequency k_base
-F_WALL_THICKNESS = 0.30   # solid wall thickness (mm)
+F_WALL_THICKNESS = 0.30   # minimum physical wall thickness (mm)
 SDF_EPSILON      = 0.04   # smooth-Heaviside sharpness (mm)
+
+# G is dimensionless (products of sin/cos), so `half_thickness` is NOT in mm.
+# The physical wall half-width at a point ≈ half_thickness / |∇G|_local.
+# The worst-case gradient on the gyroid surface is |∇G|_max = k × √3, reached
+# at "triple points" where kx=ky=kz=0 mod 2π (verified analytically: each of
+# the three gradient components equals k there, giving |∇G| = k√3).
+#
+# We convert physical wall_mm → G-threshold using k_base × √3.  Using the
+# maximum possible k (k_base + k_amp_bound) instead would require a threshold
+# larger than the hard physical cap |G| ≤ 1.5 (the global max of the gyroid),
+# which would make the entire domain solid.  The guarantee therefore holds at
+# k = k_base: regions where the RBF pushes k above k_base will have walls that
+# are thinner by the ratio k_base / k_local, but still ≥ wall_mm × k_base/k_max.
+_GYROID_GRAD_MAX = math.sqrt(3)   # max |∇G|/k on the gyroid surface (triple points)
+_G_MAX           = 1.5            # global max of |G| for the standard gyroid
 
 # Solid material density for mass calculation (thermalProperties: ks=237 → aluminium)
 SOLID_DENSITY_G_PER_MM3 = 0.0027   # g/mm³  (aluminium 2700 kg/m³)
@@ -873,10 +888,19 @@ class GyroidRBFOptimizer:
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
-        self.wall_thickness = wall_thickness  # Physical wall thickness (mm)
-        self.half_thickness = 0.5 * wall_thickness  # Half-thickness for SDF
-        self.epsilon        = epsilon
+        self.wall_thickness = wall_thickness  # minimum physical wall thickness (mm)
         self.k_amp_bound    = k_amp_bound
+        # Convert physical mm → dimensionless G-threshold using worst-case gradient at k_base:
+        # |∇G|_max = k_base × √3  (triple points).  Using k_max = k_base+k_amp_bound would
+        # demand a threshold > G_MAX = 1.5, collapsing the entire domain to solid.
+        self.half_thickness = 0.5 * wall_thickness * k_base * _GYROID_GRAD_MAX
+        if self.half_thickness >= _G_MAX:
+            raise ValueError(
+                f"half_thickness ({self.half_thickness:.4f}) ≥ G_MAX ({_G_MAX}): "
+                f"wall_thickness={wall_thickness:.4f} mm is too large for k_base={k_base:.4f} rad/mm. "
+                f"Maximum feasible wall_mm = {_G_MAX / (0.5 * k_base * _GYROID_GRAD_MAX) * 0.99:.4f} mm."
+            )
+        self.epsilon        = epsilon
         self.solver         = solver
         self.n_procs        = n_procs
         self.solid_density_g_per_mm3 = solid_density_g_per_mm3
@@ -932,6 +956,9 @@ class GyroidRBFOptimizer:
         print(f"k_base = {k_base:.4f} rad/mm  (unit size = {2*math.pi/k_base:.3f} mm)")
         print(f"k_amp_bound = ±{k_amp_bound:.4f} rad/mm  "
               f"→ k in [{k_base-k_amp_bound:.3f}, {k_base+k_amp_bound:.3f}] rad/mm")
+        print(f"min_wall    = {wall_thickness:.4f} mm  "
+              f"→ G_half_threshold = {self.half_thickness:.4f}  "
+              f"(k_base×√3 = {k_base*_GYROID_GRAD_MAX:.3f} rad/mm, G_MAX = {_G_MAX})")
 
         self.cell_centers_mm = get_cell_centers_mm(case_dir, of_binary)
         self.n_cells = len(self.cell_centers_mm)
@@ -1088,15 +1115,19 @@ class GyroidRBFOptimizer:
         print(f"  outletT        = {outletT:.6g} K")
         print(f"  solid_mass     = {solid_mass:.4f} g  (aluminium, half-symmetry domain)")
         print(f"  solid_fraction = {vol_use:.4f}")
-        print(f"  ||sens||_inf   = {np.abs(fsens_base).max():.4g}")
+        print(f"  ||sens||_inf   = {np.abs(fsens_base).max():.4g}   ||sens||_p99 = {float(np.percentile(np.abs(fsens_base), 99)):.4g}")
         print(f"  alphaMax       = {alphaMax:.4g}")
 
-        # Normalize sensitivity
+        # Normalize sensitivity by the 99th-percentile magnitude to avoid a single
+        # outlier cell (boundary singularity in the adjoint field) compressing the
+        # bulk sensitivity to near-zero.  Clip any remaining spikes at ±3× the ref.
         if not hasattr(self, '_fsens_ref'):
-            self._fsens_ref = float(np.abs(fsens_base).max())
+            self._fsens_ref = float(np.percentile(np.abs(fsens_base), 99))
             if self._fsens_ref == 0:
-                self._fsens_ref = 1.0
-        fsens_norm = fsens_base / self._fsens_ref
+                self._fsens_ref = float(np.abs(fsens_base).max()) or 1.0
+        print(f"  fsens_ref (p99) = {self._fsens_ref:.4g}   max = {np.abs(fsens_base).max():.4g}")
+        fsens_clipped = np.clip(fsens_base, -3.0 * self._fsens_ref, 3.0 * self._fsens_ref)
+        fsens_norm = fsens_clipped / self._fsens_ref
 
         # ── Augmented objective with penalties ─────────────────────────────────
         J_obj = dissPower if self.mode == 'pressure' else meanT - self.Texterior
@@ -1221,13 +1252,14 @@ class GyroidRBFOptimizer:
         g_th = am_info.get('g_th', 0.0)
         Phi_o = self.am.Phi_o
         
-        # If violated by more than tolerance, increase wall_thickness by 5%
+        # If violated by more than tolerance, increase min wall thickness by 5%
         if g_th > Phi_o + 1e-3:
             old_wt = self.wall_thickness
-            self.wall_thickness *= 1.05  # Increase by 5%
-            self.half_thickness = 0.5 * self.wall_thickness
+            self.wall_thickness *= 1.05
+            self.half_thickness = 0.5 * self.wall_thickness * self.k_base * _GYROID_GRAD_MAX
             print(f"  [Thickness adj] g_th={g_th:.4g} > Φ_o={Phi_o:.3g}  "
-                  f"wall_thickness: {old_wt:.4f} → {self.wall_thickness:.4f} mm")
+                  f"min_wall: {old_wt:.4f} → {self.wall_thickness:.4f} mm  "
+                  f"G_half_threshold: {self.half_thickness:.4f}")
             return True
         return False
 
@@ -1356,7 +1388,7 @@ def main() -> None:
     parser.add_argument('--unit',      type=float, default=F_UNIT_SIZE,
                         help=f'Gyroid cell size in mm – sets k_base (default: {F_UNIT_SIZE})')
     parser.add_argument('--wall',      type=float, default=F_WALL_THICKNESS,
-                        help=f'Gyroid wall thickness in mm (default: {F_WALL_THICKNESS})')
+                        help=f'Minimum physical wall thickness in mm (default: {F_WALL_THICKNESS})')
     parser.add_argument('--epsilon',   type=float, default=SDF_EPSILON,
                         help=f'Smooth-Heaviside sharpness in mm (default: {SDF_EPSILON})')
     parser.add_argument('--kbound',    type=float, default=K_AMP_BOUND,

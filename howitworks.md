@@ -34,7 +34,8 @@ python gyroid_case_wrapper.py --config gyroid_case_config.yaml
 Read the yaml file to choose the correct inputs
 
 ## TODO:
-- Make AlphaMax go up through the iterations from a low number (AlphaMax is now hardcoded to 5000 initially, goes up to 5e6 through the iterations)
+- Create opt3 that controls Heaviside thickness
+- Remove the thickness constraint, instead use the wall thickness parameter directly
 - Remove heat source Q, add surface heating
 - Maybe a new fsens that is for minmizing outlet temp instead of meanT
 - Make other geometries possible
