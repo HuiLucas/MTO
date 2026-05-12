@@ -5,18 +5,23 @@
     std::remove("Time.txt");
     std::remove("massflow.txt");
     std::remove("deltaP.txt");
+    std::remove("alphaMax.txt");
 //    
     scalar C(0);
     scalar DissPower(0);
     scalar meanT(0);
     scalar V(0);
     scalar scalef(0),scaleg(0);
-    int opt(readScalar(transportProperties.lookup("opt")));
-   alphaMax.value() *= Foam::pow(4, opt-1);
-   alphaMax.value()=Foam::min(alphaMax.value(),5e6);//1e6,1e7
-   alphamax.value() *= Foam::pow(4, opt-1);
+    int opt1(readScalar(transportProperties.lookup("opt1")));
+    int opt2(readScalar(transportProperties.lookup("opt2")));
+   alphaMax.value() *= Foam::pow(5, opt1-1);
+   alphaMax.value()=Foam::min(alphaMax.value(),5e6);//1e6,1e7 TODO: fix min Alphamax
+   alphamax.value() *= Foam::pow(5, opt1-1);
    alphamax.value()=Foam::min(alphamax.value(),5e6);//1e6,1e7
    Info<< "alphaMax: recalc " << alphaMax.value() << endl;
+   std::ofstream outfileam("alphaMax.txt",std::ios::app);
+   outfileam<<alphaMax.value()<<"\n";
+   outfileam.close();
     int i=0,j=0,k=0,jk,allcells,nallcells,mycells=0,iter=0;
     scalar allcell=gamma.size();//allcell:length of gamma in the i-th core
     allcells=static_cast<int>(allcell); 

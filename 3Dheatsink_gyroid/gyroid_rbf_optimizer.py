@@ -708,7 +708,7 @@ def read_objective(case_dir: Path) -> tuple[float, float, float, float, float]:
         lines = [l.strip() for l in p.read_text().splitlines() if l.strip()]
         return float(lines[-1]) if lines else float('nan')
     return (_last('meanT.txt'), _last('Disspower.txt'),
-            _last('massflow.txt'), _last('deltaP.txt'), _last('outletT.txt'))
+            _last('massflow.txt'), _last('deltaP.txt'), _last('outletT.txt'), _last('alphaMax.txt'))
 
 
 def read_adjoint_sensitivity(case_dir: Path, sens_name: str = 'fsens') -> np.ndarray:
@@ -859,7 +859,7 @@ class GyroidRBFOptimizer:
         use_thickness:   bool  = True,
         # ── Optimisation mode ─────────────────────────────────────────────────
         mode:              str   = 'heat',   # 'heat' or 'pressure'
-        target_mass_g:     float | None = None,
+        target_meanT:     float | None = None,
         target_flow_m3s:   float | None = None,
         target_disspower:  float | None = None,
         mu_mass:           float = 100.0,
@@ -867,7 +867,9 @@ class GyroidRBFOptimizer:
         mu_disspower:      float = 100.0,
         solid_density_g_per_mm3: float = SOLID_DENSITY_G_PER_MM3,
         func_callback:       callable | None = None,  # Optional callback after each iteration: func(iter_num, history)
-        opt = 1,
+        opt1 = 1,
+        opt2 = 1,
+        Texterior = 0.0
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -881,16 +883,19 @@ class GyroidRBFOptimizer:
         self._accepted_iter = 0
         self._pending_update: dict | None = None
         self._history: list[dict] = []
+        self._x_prev: np.ndarray | None = None
         
         # ── Optimisation mode and constraints ──────────────────────────────────
         self.mode           = mode  # 'heat' or 'pressure'
-        self.meantT_max     = target_mass_g    # max meanT constraint (pressure mode)
+        self.meantT_max     = target_meanT    # max meanT constraint (pressure mode)
         self.dissPower_max  = target_disspower # max DissPower constraint (heat mode)
         self.mu_penalty     = mu_mass  # Penalty multiplier for constraints
         self._mu_adaptive   = mu_mass  # Adaptive penalty that increases if constraints violated
 
         self.func_callback   = func_callback  # Optional callback after each iteration
-        self.opt = opt 
+        self.opt1 = opt1
+        self.opt2 = opt2
+        self.Texterior = Texterior
 
         if k_base - k_amp_bound <= 0:
             raise ValueError(
@@ -1021,9 +1026,10 @@ class GyroidRBFOptimizer:
         - 'pressure': minimize DissPower, read gsens_U, apply penalty for meanT constraint
         """
         t0 = time.time()
-        print('OptPrint:', self.opt)
-        self.func_callback(self.opt)
-        #self.opt += 1
+        print('OptPrint:', self.opt1, self.opt2)
+        self.func_callback([self.opt1, self.opt2])
+        #self.opt1 += 1
+        #self.opt2 += 1
         eval_iter = self._accepted_iter + 1
         print(f"\n{'─'*60}")
         print(f"Outer iteration {eval_iter}  [mode: {self.mode}]")
@@ -1066,7 +1072,7 @@ class GyroidRBFOptimizer:
             # Minimize meanT: read fsens
             fsens_base = read_adjoint_sensitivity(self.case_dir, 'fsens')
 
-        meanT, dissPower, massflow, deltaP, outletT = read_objective(self.case_dir)
+        meanT, dissPower, massflow, deltaP, outletT, alphaMax = read_objective(self.case_dir)
 
         vol_use    = 1.0 - gamma.mean()
         solid_mass = self.solid_density_g_per_mm3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
@@ -1074,8 +1080,8 @@ class GyroidRBFOptimizer:
              print(f"\n  Objective: DissPower = {dissPower:.6g}  (to minimize)")
              print(f"  Constraint: meanT ≤ {self.meantT_max:.6g}  (current meanT = {meanT:.6g})")
         else:
-            print(f"\n  Objective: meanT = {meanT:.6g}  (to minimize)")    
-            print(f"  J (meanT)      = {meanT:.6g}")
+            print(f"\n  Objective: meanT = {(meanT - self.Texterior):.6g}  (to minimize)")    
+            print(f"  J (meanT)      = {(meanT - self.Texterior):.6g}")
         print(f"  DissPower      = {dissPower:.6g}")
         print(f"  flow_rate      = {massflow:.6g} m³/s")
         print(f"  deltaP         = {deltaP:.6g} m²/s²  (kinematic pressure drop)")
@@ -1083,6 +1089,7 @@ class GyroidRBFOptimizer:
         print(f"  solid_mass     = {solid_mass:.4f} g  (aluminium, half-symmetry domain)")
         print(f"  solid_fraction = {vol_use:.4f}")
         print(f"  ||sens||_inf   = {np.abs(fsens_base).max():.4g}")
+        print(f"  alphaMax       = {alphaMax:.4g}")
 
         # Normalize sensitivity
         if not hasattr(self, '_fsens_ref'):
@@ -1092,7 +1099,7 @@ class GyroidRBFOptimizer:
         fsens_norm = fsens_base / self._fsens_ref
 
         # ── Augmented objective with penalties ─────────────────────────────────
-        J_obj = dissPower if self.mode == 'pressure' else meanT
+        J_obj = dissPower if self.mode == 'pressure' else meanT - self.Texterior
         J_aug = float(J_obj)
         fsens_aug = fsens_norm.copy()
 
@@ -1122,21 +1129,18 @@ class GyroidRBFOptimizer:
 
         elif self.mode == 'heat' and self.dissPower_max is not None:
             # Penalty on DissPower constraint: J += mu * max(0, dissPower - dissPower_max)^2
-            constraint_viol = max(0.0, dissPower - self.dissPower_max)/dissPower
+            constraint_viol = max(0.0, dissPower - self.dissPower_max)/dissPower # * 50
             mu_adaptive = self._mu_adaptive
-            pen_disspower = mu_adaptive * constraint_viol ** 2 * 50
+            pen_disspower = mu_adaptive * constraint_viol ** 2
             J_aug += pen_disspower
             constraint_info['g_disspower'] = dissPower
             constraint_info['pen_disspower'] = pen_disspower
 
             dp_sens_base = read_adjoint_sensitivity(self.case_dir, 'gsens_U')
-            if not hasattr(self, '_dp_sens_ref'):
-                self._dp_sens_ref = float(np.abs(dp_sens_base).max())
-                if self._dp_sens_ref == 0:
-                    self._dp_sens_ref = 1.0
-            dp_sens_norm = dp_sens_base / self._dp_sens_ref
+            # Normalize with the thermal reference so both gradients are on the same scale.
+            dp_sens_scaled = dp_sens_base / self._fsens_ref
             if constraint_viol > 0.0:
-                fsens_aug += 2.0 * mu_adaptive * constraint_viol * dp_sens_norm * 50
+                fsens_aug += 2.0 * mu_adaptive * constraint_viol * dp_sens_scaled
 
             print(f"  disspower_constraint: g={dissPower:.6g} (limit {self.dissPower_max:.6g}), "
                   f"viol={constraint_viol:.6g}, pen={pen_disspower:.6g}, μ={mu_adaptive:.2f}")
@@ -1173,12 +1177,14 @@ class GyroidRBFOptimizer:
         grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
 
         elapsed = time.time() - t0
+        delta_x_norm = float(np.linalg.norm(x - self._x_prev)) if self._x_prev is not None else float('nan')
+        self._x_prev = x.copy()
         print(f"  elapsed = {elapsed:.1f} s  ||grad||_2 = {np.linalg.norm(grad_flat):.4g}  "
-              f"fsens_ref = {self._fsens_ref:.4g}")
+              f"||Δx|| = {delta_x_norm:.4g}  fsens_ref = {self._fsens_ref:.4g}")
 
         self._history.append(dict(
             iter=eval_iter,
-            J=meanT, J_aug=J_aug, J_obj=J_obj,
+            J=meanT-self.Texterior, J_aug=J_aug, J_obj=J_obj,
             dissPower=dissPower, vol=vol_use,
             solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP, outletT=outletT,
             mode=self.mode,
@@ -1194,7 +1200,8 @@ class GyroidRBFOptimizer:
             mu_adaptive=self._mu_adaptive,
             mu_oh=(self.am.mu_oh if self.am is not None else float('nan')),
             mu_th=(self.am.mu_th if self.am is not None else float('nan')),
-            grad_norm=float(np.linalg.norm(grad_flat)), elapsed=elapsed,
+            grad_norm=float(np.linalg.norm(grad_flat)), delta_x=delta_x_norm, elapsed=elapsed,
+            alphaMax=alphaMax,
         ))
         self._save_history()
         self.save_ctrl_pts(x, tag='_checkpoint')   # always overwritten; safe restart point
@@ -1228,10 +1235,10 @@ class GyroidRBFOptimizer:
         hist_path = self.case_dir / 'gyroid_opt_history.txt'
         with open(hist_path, 'w') as f:
             f.write(
-                "iter  mode    J_meanT      J_obj        J_aug        DissPower     outletT    solid_frac  "
-                "solid_g    flow_m3s   deltaP_m2s2  wall_thickness  g_meanT    pen_meanT  "
-                "g_disspower  pen_disspower  mu_penalty  "
-                "g_oh    pen_oh    mu_oh    g_th    pen_th    mu_th    grad_norm  elapsed_s\n"
+                "iter       mode         J_meanT      J_obj        J_aug        DissPower     outletT    solid_frac  "
+                "solid_g    flow_m3s   deltaP_m2s2  wall_thickness        g_meanT    pen_meanT  "
+                "g_disspower  pen_disspower  mu_penalty        "
+                "g_oh    pen_oh    mu_oh    g_th    pen_th    mu_th    grad_norm  delta_x    elapsed_s  alphaMax\n"
             )
             for h in self._history:
                 f.write(
@@ -1257,7 +1264,9 @@ class GyroidRBFOptimizer:
                     f"{h.get('pen_th', 0.0):9.4g}  "
                     f"{h.get('mu_th', float('nan')):9.4g}  "
                     f"{h['grad_norm']:10.4g}  "
-                    f"{h['elapsed']:8.1f}\n"
+                    f"{h.get('delta_x', float('nan')):10.4g}  "
+                    f"{h['elapsed']:8.1f}"
+                    f"{h.get('alphaMax', float('nan')):10.4g}\n"
                 )
 
     def save_ctrl_pts(self, x: np.ndarray, tag: str = '') -> None:
@@ -1427,7 +1436,7 @@ def main() -> None:
         use_overhang    = not args.no_overhang,
         use_thickness   = not args.no_thickness,
         mode             = args.mode,
-        target_mass_g    = args.meantT_max,
+        target_meanT    = args.meantT_max,
         target_disspower = args.disspower_max,
         mu_mass          = args.mu_penalty,
         solid_density_g_per_mm3 = args.solid_density,

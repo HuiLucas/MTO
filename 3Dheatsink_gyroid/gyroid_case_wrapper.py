@@ -270,7 +270,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
 
     props = MaterialProperties(
         nu=nu_value,
-        alpha_max=5000000, # TODO: Change back to yaml input
+        alpha_max=float(alpha_max_computed),
         mma_init=float(_require(material_cfg, 'mma_init', 'material')),
         mma_dec=float(_require(material_cfg, 'mma_dec', 'material')),
         mma_inc=float(_require(material_cfg, 'mma_inc', 'material')),
@@ -874,7 +874,7 @@ boundaryField
     _write_text(case_dir / '0' / 'Tb', content)
 
 
-def write_transport_properties(constant_dir: Path, props: MaterialProperties, opt = 1) -> None:
+def write_transport_properties(constant_dir: Path, props: MaterialProperties, opt1 = 1, opt2 = 1) -> None:
     content = _foam_header('constant', 'transportProperties')
     content += f"""
 transportModel  Newtonian;
@@ -903,7 +903,8 @@ geo_dim                {props.geo_dim:.12g};
 
 b1                     b1 [0 2 -2 -2 0 0 0] {props.b1:.12g};
 qu                     {props.qu:.12g};
-opt                    {opt};
+opt1                   {opt1};
+opt2                   {opt2};
 
 
 // ************************************************************************* //
@@ -986,7 +987,7 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
     sx, sy, sz = geometry.size_mm
     opt_min = np.array([ox, oy, oz], dtype=float)
     opt_max = np.array([ox + sx, oy + sy, oz + sz], dtype=float)
-    func_callback = lambda optvar : write_transport_properties(case_dir / 'constant', material, opt=optvar)
+    func_callback = lambda optvar : write_transport_properties(case_dir / 'constant', material, opt1=optvar[0], opt2=optvar[1])
 
     return GyroidRBFOptimizer(
         case_dir=case_dir,
@@ -1010,248 +1011,16 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
             use_overhang=not optimisation.no_overhang,
             use_thickness=not optimisation.no_thickness,
             mode=optimisation.mode,
-            target_mass_g=optimisation.meantT_max,
+            target_meanT=optimisation.meantT_max,
             target_disspower=optimisation.dissPower_max,
             mu_mass=optimisation.mu_penalty,
             solid_density_g_per_mm3=material.solid_density_g_per_mm3,
             func_callback=func_callback,
-            opt = 1
+            opt1 = 1,
+            opt2 = 1,
+            Texterior=material.Texterior,
     )
 
-
-def config_template() -> str:
-        return """# Gyroid case configuration
-#
-# Every section below has comments explaining what each parameter does and
-# when you need to change it. This file is the main interface for the wrapper.
-
-run:
-    # OpenFOAM case directory relative to this script.
-    # Change this when you want to point the wrapper at a different case folder.
-    case: app
-
-    # Solver executable used after meshing and decomposition.
-    # Keep this as MTO_TF unless you rebuilt the solver under another name.
-    solver: MTO_TF
-
-    # Number of MPI ranks used for the solver and decomposition.
-    # Set to 1 for serial execution, or to the number of cores you want to use.
-    parallel: 20
-
-    # postProcess binary used to generate cell centres.
-    # Only change this if your OpenFOAM installation uses a different name.
-    postprocess: postProcess
-
-    # If true, the wrapper skips case cleanup and only rewrites the setup files.
-    # Use this when you want to preserve an already prepared case.
-    skip_clean: false
-
-    # Maximum number of outer optimizer iterations.
-    # Increase this for longer searches; reduce it for quick tests.
-    iters: 50
-
-geometry:
-    # Box origin in mm. This defines the lower corner of the simulation box.
-    # Move this if your domain should start somewhere other than (0,0,0).
-    origin_mm: [0.0, 0.0, 0.0]
-
-    # Box size in mm along x, y, z.
-    # Change these when the design domain itself changes.
-    size_mm: [4.0, 2.5, 10.0]
-
-    # Cell counts in x, y, z for blockMesh.
-    # Increase for finer resolution, decrease to reduce runtime.
-    cells: [80, 40, 160]
-
-    # Which axis carries the main flow direction.
-    # Inlet is placed on the minimum face of this axis, outlet on the maximum face.
-    flow_axis: x
-
-inlet:
-    # Which face of the flow axis carries the inlet window.
-    # Use min for the low side of the flow axis, or max for the opposite side.
-    face: min
-
-    # Rectangular inlet window origin on the chosen face, in mm.
-    # The coordinates are local to the face and ordered by the two transverse axes.
-    # For flow_axis: x -> [y0, z0], y -> [x0, z0], z -> [x0, y0].
-    window_origin_mm: [0.0, 0.0]
-
-    # Rectangular inlet window size on the chosen face, in mm.
-    # Increase to open more of the face; decrease to concentrate the inflow.
-    window_size_mm: [2.0, 1.0]
-
-outlet:
-    # Which face of the flow axis carries the outlet window.
-    # Usually opposite to inlet.face. The wrapper enforces opposite-side inlet/outlet faces.
-    face: max
-
-    # Rectangular outlet window origin on the chosen face, in mm.
-    # The coordinates are local to the face and ordered by the two transverse axes.
-    # For flow_axis: x -> [y0, z0], y -> [x0, z0], z -> [x0, y0].
-    window_origin_mm: [0.0, 0.0]
-
-    # Rectangular outlet window size on the chosen face, in mm.
-    # Increase to open more of the face; decrease to constrain outflow to a smaller region.
-    window_size_mm: [2.0, 1.0]
-
-material:
-    # Fluid kinematic viscosity.
-    # Needed whenever the flow equations should match a specific working fluid.
-    nu: 1.0e-6
-
-    # Maximum flow resistance used by the SIMP/MMA backend.
-    # Used only if darcy_number is 0.0; otherwise computed from Darcy relationship.
-    # Increase if you want to penalize fluid regions more strongly.
-    alpha_max: 5.0e6
-
-    # Initial MMA parameter.
-    # Usually kept near the repository default unless you are tuning convergence.
-    mma_init: 0.5
-
-    # MMA decrease factor.
-    # Lower values make the optimizer more conservative after bad steps.
-    mma_dec: 0.7
-
-    # MMA increase factor.
-    # Higher values let the optimizer become more aggressive after good steps.
-    mma_inc: 1.2
-
-    # MMA move limit.
-    # Controls the maximum variable update per step.
-    movlim: 0.4
-
-    # Initial fluid volume fraction used by the solver.
-    # Keep this aligned with the starting topology you want.
-    voluse: 0.2
-
-    # Radius for filtering sensitivities/updates in the backend.
-    # Raise this for smoother designs, lower it for finer local variation.
-    filter_radius: 2.0
-
-    # Backend flags used by the original solver logic.
-    # These are usually left at the repository defaults unless the solver is changed.
-    solid_area: 0.0
-    fluid_area: 1.0
-    test_pd: 0.0
-
-    # Normalization and penalty coefficients used by the legacy backend.
-    # Change these only if you know the solver-side scaling needs different values.
-    d_normalization: 1.0e-9
-    d0: 10.0
-    d1: 4.0
-    geo_dim: 3.0
-    b1: 1.0
-    qu: 0.005
-
-    # Thermal properties.
-    # Required whenever you want the thermal objective to reflect a real material.
-    kf: 0.61
-    ks: 237.0
-    rhoc: 4180000.0
-    t_alpha: 2.0e-5
-
-    # Density used only for reporting solid mass in the wrapper output.
-    # This does not change the CFD physics; it changes the mass estimate only.
-    solid_density_g_per_mm3: 0.0027
-
-    # Darcy number used to compute alphaMax via: alphaMax = nu / (L^2 * Da)
-    # where L is the geometric mean of the two transverse (perpendicular-to-flow) dimensions.
-    # Set to 0.0 to disable and use the direct alpha_max value instead.
-    # This relationship is computed once during case preparation and written as alphaMax.
-    darcy_number: 0.0
-
-turbulence:
-    # OpenFOAM simulation type written to turbulenceProperties.
-    # Keep laminar for the current solver setup unless you intentionally switch to a turbulence model.
-    simulation_type: laminar
-
-    # RAS model name written to turbulenceProperties.
-    # This matters only when simulation_type is RAS.
-    ras_model: laminar
-
-    # Turbulence switch written to turbulenceProperties.
-    # Use off for laminar runs and on for turbulence models.
-    turbulence: off
-
-    # Whether to print turbulence model coefficients.
-    # Usually off unless you are debugging the model.
-    print_coeffs: off
-
-optimization:
-    # Gyroid cell size in mm.
-    # This sets the base frequency of the TPMS lattice.
-    unit: 1.5
-
-    # Gyroid wall thickness in mm.
-    # Increase this when you want thicker struts; decrease for more open flow passages.
-    wall: 0.30
-
-    # Smooth-Heaviside sharpness in mm.
-    # Smaller values make the gamma transition sharper; larger values smooth the boundary.
-    epsilon: 0.04
-
-    # RBF control-point spacing in mm.
-    # Smaller values give more geometric freedom but more design variables and cost.
-    spacing: 2.0
-
-    # Baked-grid spacing in mm for fast RBF lookup.
-    # Smaller values improve interpolation accuracy at the cost of memory and startup time.
-    bake_spacing: 0.4
-
-    # Allowed amplitude of the frequency perturbation in rad/mm.
-    # Increase only if you need stronger geometric variation; keep it positive enough to avoid invalid frequencies.
-    kbound: 2.0
-
-    # Objective mode.
-    # heat: minimize mean temperature.
-    # pressure: minimize dissipation power and optionally enforce a mean temperature constraint.
-    mode: heat
-
-    # Mean temperature upper bound used only in pressure mode.
-    # Leave null if you do not want a temperature constraint.
-    meantT_max: null
-
-    # Dissipation power upper bound used only in heat mode (minimise meanT with a DissPower cap).
-    # Leave null to run unconstrained. The gradient contribution uses gsens_U.
-    dissPower_max: null
-
-    # Penalty multiplier for constraint violations in the optimizer.
-    # Increase if constraints are violated too often.
-    mu_penalty: 100.0
-
-    # AM overhang filter radius in mm.
-    # Used only when the AM overhang constraint is enabled.
-    am_filter: 0.15
-
-    # Maximum overhang angle in degrees.
-    # 45 degrees is a common default for self-supporting geometries.
-    am_theta: 45.0
-
-    # Overhang constraint bound.
-    # Reduce for stricter support requirements.
-    am_P_bar: 0.01
-
-    # Thickness constraint bound.
-    # Reduce for stricter minimum-thickness requirements.
-    am_Phi_o: 0.01
-
-    # Overhang penalty weight.
-    # Increase when overhang violations should be punished more strongly.
-    mu_overhang: 1.0
-
-    # Thickness penalty weight.
-    # Increase when wall-thickness violations should be punished more strongly.
-    mu_thickness: 20.0
-
-    # Disable the overhang constraint entirely when true.
-    # Use this when the geometry is known to be manufacturable without overhang control.
-    no_overhang: false
-
-    # Disable the thickness constraint entirely when true.
-    # Use this when thickness is controlled externally or not relevant.
-    no_thickness: false
-"""
 
 
 def main() -> None:
@@ -1270,11 +1039,7 @@ def main() -> None:
     script_dir = Path(__file__).resolve().parent
     config_path = (script_dir / args.config).resolve()
 
-    if args.write_config_template:
-        template_path = script_dir / 'gyroid_case_config.template.yaml'
-        _write_text(template_path, config_template())
-        print(f'Wrote template config to {template_path}')
-        return
+
 
     config = load_config(config_path)
     run, geometry, props, optimisation, inlet, outlet, turbulence, thermal = resolve_settings(config, args)

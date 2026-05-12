@@ -18,7 +18,7 @@ for(i=0;i<nallcells;i++)
    gamma_densityfilter[i]=add1/add2;
 }
 
-if(opt>1)
+if(opt1>1)
 {
   del=del+0.2;
 }

@@ -15,7 +15,7 @@ Info<<"  [dbg] gsens_U done, entering Heaviside_sens"<<endl;
 
 #include "Heaviside_sens.H"
      
-gx[0]=(DissPower/Foam::max(D0-opt*0.2,D1)-1.0);
+gx[0]=(DissPower/Foam::max(D0-opt2*0.2,D1)-1.0);
 gx[1]=(V);
 
 for(i=0;i<allcells;i++)
@@ -24,7 +24,7 @@ for(i=0;i<allcells;i++)
   dgdx[0][i]=gsens_U[i]/scaleg/nallcells;
   dgdx[1][i]=gsens[i];
 }
-Info<< "Max(D0-opt*0.2,D1): " << Foam::max(D0-opt*0.2,D1) << endl;
+Info<< "Max(D0-opt2*0.2,D1): " << Foam::max(D0-opt2*0.2,D1) << endl;
 //Info<< "\nrun mmasub\n" << endl;
 //mma.MMAsolver(xmma, dfdx, gx, dgdx);
 
@@ -35,14 +35,14 @@ Info<< "Max(D0-opt*0.2,D1): " << Foam::max(D0-opt*0.2,D1) << endl;
 
 #include "Heaviside_rho.H"
 
-opt++;
+opt1++;
 
 alphaMax=alphaMax*1.04;
 alphaMax.value()=Foam::min(alphaMax.value(),1e5);//1e6,1e7
 
-if(opt>=80)
+if(opt1>=80)
 {
-  qu=0.005+(opt-80)*1e-4;
+  qu=0.005+(opt1-80)*1e-4;
 }
 qu=Foam::min(qu,0.02);
 qu.correctBoundaryConditions();

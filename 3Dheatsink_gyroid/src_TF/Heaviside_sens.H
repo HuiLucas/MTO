@@ -46,9 +46,9 @@ Info << "[dbg-hs] scalef=" << scalef << " scaleg=" << scaleg << " eta5=" << eta5
 // gsens must be zeroed for opt==1 (uninitialized heap memory → potential NaN → SIGFPE)
 for(i=0;i<nallcells;i++) gsens[i]=0.0;
 
-Info << "[dbg-hs] A: gsens zeroed, entering opt>1 drho block (opt=" << opt << ")" << endl;
+Info << "[dbg-hs] A: gsens zeroed, entering opt>1 drho block (opt=" << opt1 << ")" << endl;
 
-if(opt>1)
+if(opt1>1)
 {
   for(i=0;i<nallcells;i++)
   {
@@ -90,7 +90,7 @@ for(i=0;i<nallcells;i++)//ith node
 
 Info << "[dbg-hs] C: Faa loop done, entering copy-back block" << endl;
 
-     if(opt>1)
+     if(opt1>1)
      {
         for(i=0;i<allcells;i++)
         {

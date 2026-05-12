@@ -4,7 +4,7 @@
        #include "adjoint_heat_T.H" 
     }
 
-    if(opt==1)
+    if(opt1==1)
     { 
       for(i=0;i<200;i++)
       {
