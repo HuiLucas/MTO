@@ -34,6 +34,8 @@ python gyroid_case_wrapper.py --config gyroid_case_config.yaml
 Read the yaml file to choose the correct inputs
 
 ## TODO:
+- Reduce conductivity such that temperature is less homogeneous through heat exchanger and the geometry actually influences oulet temperature
+- Better optimizer that actually performs more iterations in comparison to evaluations.
 - Create opt3 that controls Heaviside thickness
 - Remove the thickness constraint, instead use the wall thickness parameter directly
 - Remove heat source Q, add surface heating

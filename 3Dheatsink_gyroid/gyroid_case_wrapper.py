@@ -121,14 +121,10 @@ class OptimizationSettings:
     meantT_max: float | None
     dissPower_max: float | None
     mu_penalty: float
-    am_filter: float
     am_theta: float
     am_P_bar: float
-    am_Phi_o: float
     mu_overhang: float
-    mu_thickness: float
     no_overhang: bool
-    no_thickness: bool
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -307,14 +303,10 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         meantT_max=optimization_cfg.get('meantT_max', None),
         dissPower_max=optimization_cfg.get('dissPower_max', None),
         mu_penalty=float(optimization_cfg.get('mu_penalty', 100.0)),
-        am_filter=float(optimization_cfg.get('am_filter', 0.15)),
         am_theta=float(optimization_cfg.get('am_theta', 45.0)),
         am_P_bar=float(optimization_cfg.get('am_P_bar', 0.01)),
-        am_Phi_o=float(optimization_cfg.get('am_Phi_o', 0.01)),
         mu_overhang=float(optimization_cfg.get('mu_overhang', 1.0)),
-        mu_thickness=float(optimization_cfg.get('mu_thickness', 20.0)),
         no_overhang=bool(optimization_cfg.get('no_overhang', False)),
-        no_thickness=bool(optimization_cfg.get('no_thickness', False)),
     )
 
     run = RunSettings(
@@ -1002,14 +994,10 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
             of_binary=run.postprocess,
         opt_bounds_min=opt_min,
         opt_bounds_max=opt_max,
-            am_r_filter=optimisation.am_filter,
             am_theta_max=math.radians(optimisation.am_theta),
             am_P_bar=optimisation.am_P_bar,
-            am_Phi_o=optimisation.am_Phi_o,
             am_mu_overhang=optimisation.mu_overhang,
-            am_mu_thickness=optimisation.mu_thickness,
             use_overhang=not optimisation.no_overhang,
-            use_thickness=not optimisation.no_thickness,
             mode=optimisation.mode,
             target_meanT=optimisation.meantT_max,
             target_disspower=optimisation.dissPower_max,

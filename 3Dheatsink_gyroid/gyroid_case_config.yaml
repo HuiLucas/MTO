@@ -195,10 +195,10 @@ optimization:
   # This sets the base TPMS frequency; change it to make the lattice finer or coarser.
   unit: 1.5
 
-  # Minimum physical wall thickness in mm (guaranteed worst-case).
-  # The G-threshold is computed as: 0.5 × wall × (k_base + kbound) × √3
-  # so that even at triple points (max gyroid gradient) and max k, the wall is
-  # at least this thick.  Note: walls away from triple points will be thicker.
+  # Minimum physical wall thickness in mm (guaranteed worst-case geometry).
+  # The G-threshold is computed as: 0.5 × wall × k_base × √3
+  # (√3 is the maximum |∇G|/k on the gyroid surface, reached at triple points).
+  # Walls away from triple points will be thicker than this value.
   wall: 0.041
 
   # Smooth-Heaviside sharpness in mm.
@@ -234,10 +234,6 @@ optimization:
   # Increase this if the optimizer keeps violating constraints.
   mu_penalty: 100.0
 
-  # AM overhang and thickness filter radius in mm.
-  # Used only when the overhang or thickness constraints are enabled.
-  am_filter: 0.15
-
   # Maximum overhang angle in degrees.
   # 45 degrees is a common self-supporting benchmark.
   am_theta: 45.0
@@ -246,22 +242,9 @@ optimization:
   # Lower values tighten the support requirement.
   am_P_bar: 0.01
 
-  # Thickness constraint bound.
-  # Lower values enforce a stricter minimum thickness.
-  am_Phi_o: 0.01
-
   # Overhang penalty weight.
   # Increase this if overhang violations should dominate the penalty.
   mu_overhang: 1.0
 
-  # Thickness penalty weight.
-  # Increase this if thickness violations should dominate the penalty.
-  mu_thickness: 20.0
-
   # Disable the overhang constraint entirely when true.
-  # Use this when overhang control is not required.
   no_overhang: false
-
-  # Disable the thickness constraint entirely when true.
-  # Use this when thickness is controlled elsewhere or not needed.
-  no_thickness: false

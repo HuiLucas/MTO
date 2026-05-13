@@ -57,7 +57,7 @@ from scipy.interpolate import RBFInterpolator
 from scipy.optimize import minimize
 from scipy.special import expit  # numerically stable sigmoid
 
-from am_constraints import AMConstraints
+from am_constraints import AMConstraints, compute_gyroid_overhang
 
 # ── Physical / geometry parameters ─────────────────────────────────────────────
 # blockMeshDict uses convertToMeters 0.01  →  mesh coords in metres
@@ -864,14 +864,10 @@ class GyroidRBFOptimizer:
         opt_bounds_min:  np.ndarray | None = None,
         opt_bounds_max:  np.ndarray | None = None,
         # ── AM constraint options ──────────────────────────────────────────────
-        am_r_filter:     float = 0.15,
         am_theta_max:    float = math.pi / 4.0,
         am_P_bar:        float = 0.01,
-        am_Phi_o:        float = 0.01,
         am_mu_overhang:  float = 1.0,
-        am_mu_thickness: float = 20.0,
         use_overhang:    bool  = True,
-        use_thickness:   bool  = True,
         # ── Optimisation mode ─────────────────────────────────────────────────
         mode:              str   = 'heat',   # 'heat' or 'pressure'
         target_meanT:     float | None = None,
@@ -977,18 +973,12 @@ class GyroidRBFOptimizer:
         self.bounds = [(-k_amp_bound, k_amp_bound)] * (self.n_ctrl * 3)
 
         # ── AM constraints ────────────────────────────────────────────────────
-        if use_overhang or use_thickness:
-            print("\nBuilding AM constraint operators …")
+        if use_overhang:
             self.am = AMConstraints(
-                pts_mm          = self.cell_centers_mm,
-                r_filter_mm     = am_r_filter,
-                theta_max       = am_theta_max,
-                P_bar           = am_P_bar,
-                Phi_o           = am_Phi_o,
-                mu_overhang     = am_mu_overhang,
-                mu_thickness    = am_mu_thickness,
-                use_overhang    = use_overhang,
-                use_thickness   = use_thickness,
+                theta_max    = am_theta_max,
+                P_bar        = am_P_bar,
+                mu_overhang  = am_mu_overhang,
+                use_overhang = use_overhang,
             )
         else:
             self.am = None
@@ -1031,10 +1021,6 @@ class GyroidRBFOptimizer:
         am_info = pending.get('am_info')
         if self.am is not None and am_info is not None:
             self.am.update_penalties(am_info)
-
-        if pending.get('wall_adjust', False):
-            if am_info is not None:
-                self._adjust_wall_thickness_if_violated(am_info)
 
         self._pending_update = None
 
@@ -1180,31 +1166,30 @@ class GyroidRBFOptimizer:
         else:
             next_mu_adaptive = self._mu_adaptive
 
-        # ── AM constraint penalties ───────────────────────────────────────────
+        # ── Analytic overhang penalty (direct gradient w.r.t. dk_ctrl) ──────────
+        # The thermal gradient flows through gamma → SDF → G → k via chain rule.
+        # The overhang penalty depends directly on ∇G (analytic normal), so its
+        # gradient is computed separately and added to grad_ctrl.
         am_info = {}
-        if self.am is not None:
-            J_aug, fsens_aug, am_info = self.am.apply(
-                gamma, J_aug, fsens_aug, iteration=eval_iter,
+        grad_ctrl_oh = np.zeros((self.n_ctrl, 3))
+        if self.am is not None and self.am.use_overhang:
+            J_oh, grad_ctrl_oh, am_info = compute_gyroid_overhang(
+                self.cell_centers_mm, freq_mm, gamma, sdf,
+                self.epsilon, self.am.cos_max, self.am.b_vec,
+                self.am.mu_oh, self.W,
             )
-            print(f"  g_overhang = {am_info.get('g_oh', 0.0):.4g}  "
-                  f"(limit {self.am.P_bar:.3g}, pen={am_info.get('pen_oh',0):.3g})")
-            print(f"  g_thickness= {am_info.get('g_th', 0.0):.4g}  "
-                  f"(limit {self.am.Phi_o:.3g}, pen={am_info.get('pen_th',0):.3g})  "
-                  f"β_proj={am_info.get('beta_proj',1):.1f}")
-
-        wall_adjust = False
-        if self.am is not None and am_info.get('g_th', 0.0) > self.am.Phi_o + 1e-3:
-            wall_adjust = True
+            J_aug += J_oh
+            print(f"  g_overhang = {am_info['g_oh']:.4g}  "
+                  f"(limit {self.am.P_bar:.3g}, pen={J_oh:.4g}  μ={self.am.mu_oh:.2f})")
 
         self._pending_update = {
             'next_mu_adaptive': next_mu_adaptive,
             'am_info': am_info if self.am is not None else None,
-            'wall_adjust': wall_adjust,
         }
 
         grad_ctrl = chain_rule_gradient(
             fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
-        )                                            # (N_ctrl, 3)
+        ) + grad_ctrl_oh                             # (N_ctrl, 3)
         grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
 
         elapsed = time.time() - t0
@@ -1222,15 +1207,12 @@ class GyroidRBFOptimizer:
             wall_thickness=self.wall_thickness,
             g_oh=am_info.get('g_oh', 0.0),
             pen_oh=am_info.get('pen_oh', 0.0),
-            g_th=am_info.get('g_th', 0.0),
-            pen_th=am_info.get('pen_th', 0.0),
             g_meanT=constraint_info.get('g_meanT', float('nan')),
             pen_meanT=constraint_info.get('pen_meanT', 0.0),
             g_disspower=constraint_info.get('g_disspower', float('nan')),
             pen_disspower=constraint_info.get('pen_disspower', 0.0),
             mu_adaptive=self._mu_adaptive,
             mu_oh=(self.am.mu_oh if self.am is not None else float('nan')),
-            mu_th=(self.am.mu_th if self.am is not None else float('nan')),
             grad_norm=float(np.linalg.norm(grad_flat)), delta_x=delta_x_norm, elapsed=elapsed,
             alphaMax=alphaMax,
         ))
@@ -1239,30 +1221,6 @@ class GyroidRBFOptimizer:
 
         return J_aug, grad_flat
 
-    def _adjust_wall_thickness_if_violated(self, am_info: dict) -> bool:
-        """
-        If thickness constraint is violated, increase wall_thickness before escalating penalties.
-        This gives the design room to satisfy the constraint geometrically.
-        
-        Returns True if adjustment was made, False otherwise.
-        """
-        if self.am is None or not self.am.use_thickness:
-            return False
-        
-        g_th = am_info.get('g_th', 0.0)
-        Phi_o = self.am.Phi_o
-        
-        # If violated by more than tolerance, increase min wall thickness by 5%
-        if g_th > Phi_o + 1e-3:
-            old_wt = self.wall_thickness
-            self.wall_thickness *= 1.05
-            self.half_thickness = 0.5 * self.wall_thickness * self.k_base * _GYROID_GRAD_MAX
-            print(f"  [Thickness adj] g_th={g_th:.4g} > Φ_o={Phi_o:.3g}  "
-                  f"min_wall: {old_wt:.4f} → {self.wall_thickness:.4f} mm  "
-                  f"G_half_threshold: {self.half_thickness:.4f}")
-            return True
-        return False
-
     def _save_history(self) -> None:
         hist_path = self.case_dir / 'gyroid_opt_history.txt'
         with open(hist_path, 'w') as f:
@@ -1270,7 +1228,7 @@ class GyroidRBFOptimizer:
                 "iter       mode         J_meanT      J_obj        J_aug        DissPower     outletT    solid_frac  "
                 "solid_g    flow_m3s   deltaP_m2s2  wall_thickness        g_meanT    pen_meanT  "
                 "g_disspower  pen_disspower  mu_penalty        "
-                "g_oh    pen_oh    mu_oh    g_th    pen_th    mu_th    grad_norm  delta_x    elapsed_s  alphaMax\n"
+                "g_oh    pen_oh    mu_oh    grad_norm  delta_x    elapsed_s  alphaMax\n"
             )
             for h in self._history:
                 f.write(
@@ -1292,9 +1250,6 @@ class GyroidRBFOptimizer:
                     f"{h.get('g_oh', 0.0):8.4g}  "
                     f"{h.get('pen_oh', 0.0):9.4g}  "
                     f"{h.get('mu_oh', float('nan')):9.4g}  "
-                    f"{h.get('g_th', 0.0):8.4g}  "
-                    f"{h.get('pen_th', 0.0):9.4g}  "
-                    f"{h.get('mu_th', float('nan')):9.4g}  "
                     f"{h['grad_norm']:10.4g}  "
                     f"{h.get('delta_x', float('nan')):10.4g}  "
                     f"{h['elapsed']:8.1f}"
@@ -1412,22 +1367,14 @@ def main() -> None:
     parser.add_argument('--solid-density', type=float, default=SOLID_DENSITY_G_PER_MM3,
                         help=f'Solid density in g/mm^3 for mass reporting (default: {SOLID_DENSITY_G_PER_MM3})')
     # ── AM constraint arguments ────────────────────────────────────────────────
-    parser.add_argument('--am-filter',    type=float, default=0.15,
-                        help='Helmholtz filter radius in mm (default: 0.15)')
     parser.add_argument('--am-theta',     type=float, default=45.0,
                         help='Max overhang angle in degrees (default: 45)')
     parser.add_argument('--am-P-bar',     type=float, default=0.01,
                         help='Overhang constraint bound (default: 0.01)')
-    parser.add_argument('--am-Phi-o',     type=float, default=0.01,
-                        help='Thickness constraint bound (default: 0.01)')
     parser.add_argument('--mu-overhang',  type=float, default=1.0,
                         help='Initial penalty weight for overhang (default: 1.0)')
-    parser.add_argument('--mu-thickness', type=float, default=20.0,
-                        help='Initial penalty weight for thickness (default: 20.0)')
     parser.add_argument('--no-overhang',  action='store_true',
                         help='Disable the overhang angle constraint')
-    parser.add_argument('--no-thickness', action='store_true',
-                        help='Disable the wall-thickness constraint')
     # ── Optimization mode (thermal vs. pressure-based) ────────────────────────
     parser.add_argument('--mode', choices=['heat', 'pressure'], default='heat',
                         help="Optimization mode: 'heat' minimize meanT (default), "
@@ -1459,14 +1406,10 @@ def main() -> None:
         of_binary       = args.postprocess,
         opt_bounds_min  = np.array([args.opt_xmin, args.opt_ymin, args.opt_zmin]),
         opt_bounds_max  = np.array([args.opt_xmax, args.opt_ymax, args.opt_zmax]),
-        am_r_filter     = args.am_filter,
         am_theta_max    = math.radians(args.am_theta),
         am_P_bar        = args.am_P_bar,
-        am_Phi_o        = args.am_Phi_o,
         am_mu_overhang  = args.mu_overhang,
-        am_mu_thickness = args.mu_thickness,
         use_overhang    = not args.no_overhang,
-        use_thickness   = not args.no_thickness,
         mode             = args.mode,
         target_meanT    = args.meantT_max,
         target_disspower = args.disspower_max,
