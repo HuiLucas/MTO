@@ -592,7 +592,7 @@ def write_block_mesh_dict(system_dir: Path, geometry: BoxGeometry, inlet: InletS
     content += "\n".join(patches['inlet']) + "\n"
     content += "        );\n    }\n    outlet\n    {\n        type patch;\n        faces\n        (\n"
     content += "\n".join(patches['outlet']) + "\n"
-    content += "        );\n    }\n    wall\n    {\n        type patch;\n        faces\n        (\n"
+    content += "        );\n    }\n    wall\n    {\n        type wall;\n        faces\n        (\n"
     content += "\n".join(patches['wall']) + "\n"
     content += "        );\n    }\n    force\n    {\n        type patch;\n        faces\n        (\n"
     content += "\n".join(patches['force']) + "\n"

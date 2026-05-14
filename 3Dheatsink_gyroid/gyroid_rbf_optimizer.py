@@ -876,6 +876,7 @@ class GyroidRBFOptimizer:
         mu_mass:           float = 100.0,
         mu_flow:           float = 100.0,
         mu_disspower:      float = 100.0,
+        mu_kmin:           float = 0.0,
         solid_density_g_per_mm3: float = SOLID_DENSITY_G_PER_MM3,
         func_callback:       callable | None = None,  # Optional callback after each iteration: func(iter_num, history)
         opt1 = 1,
@@ -904,6 +905,8 @@ class GyroidRBFOptimizer:
         self._pending_update: dict | None = None
         self._history: list[dict] = []
         self._x_prev: np.ndarray | None = None
+        self._best_J_aug: float = float('inf')
+        self._best_x: np.ndarray | None = None
         
         # ── Optimisation mode and constraints ──────────────────────────────────
         self.mode           = mode  # 'heat' or 'pressure'
@@ -971,6 +974,10 @@ class GyroidRBFOptimizer:
         self.W = build_rbf_jacobian(self.ctrl_pts_mm, self.cell_centers_mm, bake_spacing)
 
         self.bounds = [(-k_amp_bound, k_amp_bound)] * (self.n_ctrl * 3)
+
+        # ── Frequency lower-bound penalty ─────────────────────────────────────
+        # Penalise cells where k_eff² < k_base² (period > unit_size → isolated blobs).
+        self.mu_kmin = mu_kmin
 
         # ── AM constraints ────────────────────────────────────────────────────
         if use_overhang:
@@ -1124,7 +1131,7 @@ class GyroidRBFOptimizer:
         constraint_info = {}
         if self.mode == 'pressure' and self.meantT_max is not None:
             # Penalty on meanT constraint: J += mu * max(0, meanT - meanT_max)^2
-            constraint_viol = max(0.0, meanT - self.meantT_max)
+            constraint_viol = max(0.0, meanT - self.meantT_max)/meanT
             mu_adaptive = self._mu_adaptive
             pen_meanT = mu_adaptive * constraint_viol ** 2
             J_aug += pen_meanT
@@ -1166,6 +1173,7 @@ class GyroidRBFOptimizer:
         else:
             next_mu_adaptive = self._mu_adaptive
 
+      
         # ── Analytic overhang penalty (direct gradient w.r.t. dk_ctrl) ──────────
         # The thermal gradient flows through gamma → SDF → G → k via chain rule.
         # The overhang penalty depends directly on ∇G (analytic normal), so its
@@ -1189,7 +1197,7 @@ class GyroidRBFOptimizer:
 
         grad_ctrl = chain_rule_gradient(
             fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
-        ) + grad_ctrl_oh                             # (N_ctrl, 3)
+        ) + grad_ctrl_oh           # (N_ctrl, 3)
         grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
 
         elapsed = time.time() - t0
@@ -1218,6 +1226,11 @@ class GyroidRBFOptimizer:
         ))
         self._save_history()
         self.save_ctrl_pts(x, tag='_checkpoint')   # always overwritten; safe restart point
+        if J_aug < self._best_J_aug:
+            self._best_J_aug = J_aug
+            self._best_x = x.copy()
+            self.save_ctrl_pts(x, tag='_best')     # persists the best-ever trial point
+            print(f"  *** New best J_aug = {J_aug:.6g} — saved to _best ***")
 
         return J_aug, grad_flat
 

@@ -220,11 +220,11 @@ optimization:
   # Optimization mode.
   # heat: minimize mean temperature.
   # pressure: minimize dissipation power and optionally enforce a temperature limit. As of now pressure mode does not converge.
-  mode: heat
+  mode: pressure
 
   # Mean temperature upper bound used only in pressure mode.
   # Leave null if you are not applying a mean-temperature constraint.
-  meantT_max: null
+  meantT_max: 328
 
   # Dissipation power upper bound used only in heat mode (minimise meanT with a DissPower cap).
   # Leave null to run unconstrained. The gradient contribution uses gsens_U.
@@ -232,7 +232,7 @@ optimization:
 
   # Penalty multiplier for constraint violations.
   # Increase this if the optimizer keeps violating constraints.
-  mu_penalty: 100.0
+  mu_penalty: 10000.0
 
   # Maximum overhang angle in degrees.
   # 45 degrees is a common self-supporting benchmark.

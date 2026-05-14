@@ -30,7 +30,8 @@ FoamFile
     }
     wall
     {
-        type            patch;
+        type            wall;
+        inGroups        List<word> 1(wall);
         nFaces          1280;
         startFace       148800;
     }

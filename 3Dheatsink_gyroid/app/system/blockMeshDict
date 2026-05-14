@@ -117,7 +117,7 @@ boundary
     }
     wall
     {
-        type patch;
+        type wall;
         faces
         (
             (0 4 20 16)

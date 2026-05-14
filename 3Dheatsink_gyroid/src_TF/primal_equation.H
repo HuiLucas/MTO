@@ -14,8 +14,8 @@
      }
    }
 //*************heat transfer*******************************//
-  for(i=0;i<2;i++)
+  for(i=0;i<100;i++)
   {
-     #include "primal_heat.H"  
+     #include "primal_heat.H"
   }
 
