@@ -881,7 +881,8 @@ class GyroidRBFOptimizer:
         func_callback:       callable | None = None,  # Optional callback after each iteration: func(iter_num, history)
         opt1 = 1,
         opt2 = 1,
-        Texterior = 0.0
+        Texterior = 0.0,
+        pareto_weight: float = 0.5,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -919,6 +920,9 @@ class GyroidRBFOptimizer:
         self.opt1 = opt1
         self.opt2 = opt2
         self.Texterior = Texterior
+        self.pareto_weight = pareto_weight  # [0,1]: 0=pressure only, 1=thermal only
+        self._T_ref: float | None = None    # set on first pareto eval, kept across resets
+        self._P_ref: float | None = None
 
         if k_base - k_amp_bound <= 0:
             raise ValueError(
@@ -1078,6 +1082,7 @@ class GyroidRBFOptimizer:
             backup_latest_fluid_state(self.case_dir)
 
         # ── Read sensitivity based on mode ────────────────────────────────────
+        _fsens_P_base: np.ndarray | None = None   # pressure sensitivity (pareto only)
         if self.mode == 'pressure':
             # Minimize DissPower: read gsens_U
             try:
@@ -1088,6 +1093,10 @@ class GyroidRBFOptimizer:
                     "compute and write the adjoint sensitivity of DissPower w.r.t. gamma.\n"
                     "Ensure MTO_TF.C includes the DissPower adjoint computation."
                 )
+        elif self.mode == 'pareto':
+            # Weighted combination: need both fields
+            fsens_base    = read_adjoint_sensitivity(self.case_dir, 'fsens')
+            _fsens_P_base = read_adjoint_sensitivity(self.case_dir, 'gsens_U')
         else:  # mode == 'heat' (default)
             # Minimize meanT: read fsens
             fsens_base = read_adjoint_sensitivity(self.case_dir, 'fsens')
@@ -1173,7 +1182,41 @@ class GyroidRBFOptimizer:
         else:
             next_mu_adaptive = self._mu_adaptive
 
-      
+        # ── Pareto mode: override objective and sensitivity ───────────────────────
+        # Done after the single-objective constraint block so overhang can still
+        # be layered on top unchanged.
+        if self.mode == 'pareto':
+            w = self.pareto_weight
+            # Normalisation anchors: set once on the first evaluation, then frozen
+            # so every point on the Pareto sweep is comparable.
+            if self._T_ref is None:
+                self._T_ref = max(meanT - self.Texterior, 1.0)
+            if self._P_ref is None:
+                self._P_ref = max(dissPower, 1.0)
+            if not hasattr(self, '_fsens_ref_P'):
+                self._fsens_ref_P = float(np.percentile(np.abs(_fsens_P_base), 99))
+                if self._fsens_ref_P == 0.0:
+                    self._fsens_ref_P = float(np.abs(_fsens_P_base).max()) or 1.0
+
+            J_obj = (w * (meanT - self.Texterior) / self._T_ref
+                   + (1.0 - w) * dissPower / self._P_ref)
+            J_aug = float(J_obj)
+
+            # Combined sensitivity: each field normalised to its own p99 scale
+            fsens_T_norm = np.clip(fsens_base,
+                                   -3.0 * self._fsens_ref, 3.0 * self._fsens_ref
+                                   ) / self._fsens_ref
+            fsens_P_norm = np.clip(_fsens_P_base,
+                                   -3.0 * self._fsens_ref_P, 3.0 * self._fsens_ref_P
+                                   ) / self._fsens_ref_P
+            fsens_aug = w * fsens_T_norm + (1.0 - w) * fsens_P_norm
+
+            print(f"  Pareto w_T={w:.3f}: "
+                  f"J_T={(meanT-self.Texterior)/self._T_ref:.4g}  "
+                  f"J_P={dissPower/self._P_ref:.4g}  "
+                  f"J_combined={J_aug:.4g}  "
+                  f"(T_ref={self._T_ref:.4g} K  P_ref={self._P_ref:.4g})")
+
         # ── Analytic overhang penalty (direct gradient w.r.t. dk_ctrl) ──────────
         # The thermal gradient flows through gamma → SDF → G → k via chain rule.
         # The overhang penalty depends directly on ∇G (analytic normal), so its
@@ -1280,6 +1323,24 @@ class GyroidRBFOptimizer:
                         f"{dkx:.6g} {dky:.6g} {dkz:.6g}\n")
         print(f"  Control points saved → {out_path}")
 
+    def reset_run_state(self) -> None:
+        """Reset per-optimisation-run state so the optimizer can be reused.
+
+        Preserves _T_ref and _P_ref so that Pareto-front normalisations remain
+        consistent across all points in a sweep.
+        """
+        self._accepted_iter = 0
+        self._pending_update = None
+        self._history = []
+        self._x_prev = None
+        self._best_J_aug = float('inf')
+        self._best_x = None
+        self._mu_adaptive = self.mu_penalty
+        for attr in ('_fsens_ref', '_meanT_sens_ref', '_fsens_ref_P'):
+            if hasattr(self, attr):
+                delattr(self, attr)
+        # _T_ref and _P_ref are intentionally kept for consistent Pareto scaling
+
     # ── public entry point ────────────────────────────────────────────────────
 
     def run(
@@ -1335,6 +1396,121 @@ class GyroidRBFOptimizer:
         print(f"  Final Gyroid gamma written → {final_path}")
 
         return x_opt
+
+
+# ── Pareto-front explorer ──────────────────────────────────────────────────────
+
+class ParetoExplorer:
+    """
+    Trace the Pareto front between thermal performance (meanT) and hydraulic
+    performance (DissPower) by solving a sequence of weighted-sum problems:
+
+        J(w) = w * (meanT - T_ext) / T_ref  +  (1-w) * DissPower / P_ref
+
+    where w sweeps from 0 (pressure-only) to 1 (thermal-only).
+
+    The normalisations T_ref and P_ref are fixed from the first function
+    evaluation so that all Pareto points are comparable on the same scale.
+
+    Each point is warm-started from the previous optimum, cutting the total
+    number of solver calls roughly in half compared to independent restarts.
+    Results are written incrementally to a CSV file so the run can be analysed
+    even if it is interrupted.
+
+    Usage
+    -----
+        opt = GyroidRBFOptimizer(..., mode='pareto')
+        explorer = ParetoExplorer(opt, n_weights=9, n_iters_per_point=30)
+        front = explorer.run()
+    """
+
+    def __init__(
+        self,
+        optimizer:           GyroidRBFOptimizer,
+        weights:             list[float] | None = None,
+        n_weights:           int   = 11,
+        n_iters_per_point:   int   = 30,
+        warmstart_from_prev: bool  = True,
+        output_csv:          str   = 'pareto_front.csv',
+    ):
+        if optimizer.mode != 'pareto':
+            raise ValueError(
+                f"ParetoExplorer requires optimizer.mode='pareto' (got '{optimizer.mode}'). "
+                "Pass mode='pareto' when constructing GyroidRBFOptimizer."
+            )
+        if weights is not None:
+            self.weights = sorted(float(w) for w in weights)
+        else:
+            self.weights = [i / max(n_weights - 1, 1) for i in range(n_weights)]
+        self.opt       = optimizer
+        self.n_iters   = n_iters_per_point
+        self.warmstart = warmstart_from_prev
+        self.csv_path  = optimizer.case_dir / output_csv
+        self.front: list[dict] = []
+
+    def run(self, x0: np.ndarray | None = None) -> list[dict]:
+        """Sweep all weights and return the collected Pareto-front entries."""
+        x_prev = x0
+        n = len(self.weights)
+
+        for idx, w in enumerate(self.weights):
+            print(f"\n{'═' * 60}")
+            print(f"  Pareto sweep  {idx + 1}/{n}  "
+                  f"w_thermal={w:.4g}  w_pressure={1.0 - w:.4g}")
+            print(f"{'═' * 60}\n")
+
+            self.opt.pareto_weight = w
+            self.opt.reset_run_state()
+
+            x_opt = self.opt.run(
+                n_iters = self.n_iters,
+                x0      = x_prev if (self.warmstart and x_prev is not None) else None,
+            )
+
+            if self.opt._history:
+                best = min(self.opt._history, key=lambda h: h['J_aug'])
+                entry = dict(
+                    w_thermal  = w,
+                    w_pressure = 1.0 - w,
+                    meanT_K    = best['J'] + self.opt.Texterior,
+                    dissPower  = best.get('dissPower', float('nan')),
+                    J_aug      = best['J_aug'],
+                    solid_frac = best['vol'],
+                    outletT_K  = best.get('outletT', float('nan')),
+                    deltaP     = best.get('deltaP', float('nan')),
+                    n_evals    = len(self.opt._history),
+                )
+                self.front.append(entry)
+                self._save_csv()
+                print(f"\n  Pareto point {idx + 1}/{n}: "
+                      f"meanT={entry['meanT_K']:.4g} K  "
+                      f"DissPower={entry['dissPower']:.4g}  "
+                      f"solid_frac={entry['solid_frac']:.4f}")
+
+                if self.opt._best_x is not None:
+                    self.opt.save_ctrl_pts(
+                        self.opt._best_x,
+                        tag=f'_pareto_{idx:02d}_w{w:.3f}',
+                    )
+
+            if self.warmstart:
+                x_prev = x_opt
+
+        print(f"\nPareto sweep complete. {len(self.front)} points → {self.csv_path}")
+        return self.front
+
+    def _save_csv(self) -> None:
+        with open(self.csv_path, 'w') as fh:
+            fh.write('w_thermal,w_pressure,meanT_K,dissPower,'
+                     'J_aug,solid_frac,outletT_K,deltaP,n_evals\n')
+            for e in self.front:
+                fh.write(
+                    f"{e['w_thermal']:.6g},{e['w_pressure']:.6g},"
+                    f"{e['meanT_K']:.6g},{e['dissPower']:.6g},"
+                    f"{e['J_aug']:.6g},{e['solid_frac']:.6g},"
+                    f"{e['outletT_K']:.6g},{e['deltaP']:.6g},{e['n_evals']}\n"
+                )
+        print(f"  Pareto front → {self.csv_path}  ({len(self.front)} pts so far)")
 
 
 # ── CLI entry point ────────────────────────────────────────────────────────────

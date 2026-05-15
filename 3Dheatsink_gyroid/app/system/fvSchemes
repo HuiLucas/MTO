@@ -28,8 +28,8 @@ gradSchemes
 {
     default         Gauss linear;
     grad(D)         leastSquares;
-    grad(T)         leastSquares;
-    grad(Tb)        leastSquares;
+    grad(T)         cellLimited leastSquares 1;
+    grad(Tb)        cellLimited leastSquares 1;
 }
 
 divSchemes
@@ -39,8 +39,8 @@ divSchemes
     div(phi,U)      bounded Gauss upwind;
     div(-phi,Ub)    bounded Gauss upwind;
     div(-phi,Uc)    bounded Gauss upwind;
-    div(phi,T)      Gauss linearUpwind grad(T);
-    div(-phi,Tb)     Gauss linearUpwind grad(Tb);
+    div(phi,T)      bounded Gauss linearUpwind grad(T);
+    div(-phi,Tb)    bounded Gauss linearUpwind grad(Tb);
     div((nuEff*dev2(T(grad(U))))) Gauss linear;
 }
 

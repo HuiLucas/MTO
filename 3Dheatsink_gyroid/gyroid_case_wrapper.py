@@ -26,7 +26,7 @@ import numpy as np
 import yaml
 
 from clean_for_gyroid import clean_case
-from gyroid_rbf_optimizer import GyroidRBFOptimizer, SOLID_DENSITY_G_PER_MM3
+from gyroid_rbf_optimizer import GyroidRBFOptimizer, ParetoExplorer, SOLID_DENSITY_G_PER_MM3
 
 
 MM_TO_MESH_UNIT = 10.0
@@ -121,10 +121,16 @@ class OptimizationSettings:
     meantT_max: float | None
     dissPower_max: float | None
     mu_penalty: float
+    mu_kmin: float
     am_theta: float
     am_P_bar: float
     mu_overhang: float
     no_overhang: bool
+    pareto_enabled: bool
+    pareto_weights: list | None
+    pareto_n_weights: int
+    pareto_iters_per_point: int
+    pareto_warmstart: bool
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -303,10 +309,16 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         meantT_max=optimization_cfg.get('meantT_max', None),
         dissPower_max=optimization_cfg.get('dissPower_max', None),
         mu_penalty=float(optimization_cfg.get('mu_penalty', 100.0)),
+        mu_kmin=float(optimization_cfg.get('mu_kmin', 0.0)),
         am_theta=float(optimization_cfg.get('am_theta', 45.0)),
         am_P_bar=float(optimization_cfg.get('am_P_bar', 0.01)),
         mu_overhang=float(optimization_cfg.get('mu_overhang', 1.0)),
         no_overhang=bool(optimization_cfg.get('no_overhang', False)),
+        pareto_enabled=bool(optimization_cfg.get('pareto_enabled', False)),
+        pareto_weights=optimization_cfg.get('pareto_weights', None),
+        pareto_n_weights=int(optimization_cfg.get('pareto_n_weights', 9)),
+        pareto_iters_per_point=int(optimization_cfg.get('pareto_iters_per_point', 30)),
+        pareto_warmstart=bool(optimization_cfg.get('pareto_warmstart', True)),
     )
 
     run = RunSettings(
@@ -998,7 +1010,7 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
             am_P_bar=optimisation.am_P_bar,
             am_mu_overhang=optimisation.mu_overhang,
             use_overhang=not optimisation.no_overhang,
-            mode=optimisation.mode,
+            mode='pareto' if optimisation.pareto_enabled else optimisation.mode,
             target_meanT=optimisation.meantT_max,
             target_disspower=optimisation.dissPower_max,
             mu_mass=optimisation.mu_penalty,
@@ -1058,7 +1070,21 @@ def main() -> None:
 
     load_ctrl = Path(args.load_ctrl).resolve() if args.load_ctrl else None
     optimiser = build_optimizer(case_dir, geometry, run, optimisation, props)
-    optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl)
+
+    if optimisation.pareto_enabled:
+        explorer = ParetoExplorer(
+            optimizer           = optimiser,
+            weights             = optimisation.pareto_weights,
+            n_weights           = optimisation.pareto_n_weights,
+            n_iters_per_point   = optimisation.pareto_iters_per_point,
+            warmstart_from_prev = optimisation.pareto_warmstart,
+        )
+        x0 = None
+        if load_ctrl is not None:
+            x0 = np.loadtxt(load_ctrl)[:, 3:6].ravel()
+        explorer.run(x0=x0)
+    else:
+        optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl)
 
 
 if __name__ == '__main__':

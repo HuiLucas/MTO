@@ -224,7 +224,7 @@ optimization:
 
   # Mean temperature upper bound used only in pressure mode.
   # Leave null if you are not applying a mean-temperature constraint.
-  meantT_max: 328
+  meantT_max: 340
 
   # Dissipation power upper bound used only in heat mode (minimise meanT with a DissPower cap).
   # Leave null to run unconstrained. The gradient contribution uses gsens_U.
@@ -248,3 +248,21 @@ optimization:
 
   # Disable the overhang constraint entirely when true.
   no_overhang: false
+
+  # ── Pareto-front exploration ────────────────────────────────────────────────
+  # When pareto.enabled is true the wrapper runs ParetoExplorer instead of a
+  # single-objective optimisation.  The optimizer mode is forced to 'pareto'.
+  pareto_enabled: true
+
+  # Explicit list of thermal weights to sweep, e.g. [0.0, 0.25, 0.5, 0.75, 1.0].
+  # Leave null to space them uniformly using pareto_n_weights.
+  pareto_weights: null
+
+  # Number of uniformly-spaced weights in [0, 1] when pareto_weights is null.
+  pareto_n_weights: 9
+
+  # L-BFGS-B iterations per Pareto point.
+  pareto_iters_per_point: 30
+
+  # Warm-start each Pareto point from the previous optimum.
+  pareto_warmstart: true
