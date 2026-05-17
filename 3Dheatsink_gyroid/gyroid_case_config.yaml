@@ -252,7 +252,7 @@ optimization:
   # ── Pareto-front exploration ────────────────────────────────────────────────
   # When pareto.enabled is true the wrapper runs ParetoExplorer instead of a
   # single-objective optimisation.  The optimizer mode is forced to 'pareto'.
-  pareto_enabled: true
+  pareto_enabled: false
 
   # Explicit list of thermal weights to sweep, e.g. [0.0, 0.25, 0.5, 0.75, 1.0].
   # Leave null to space them uniformly using pareto_n_weights.
