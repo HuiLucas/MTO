@@ -878,7 +878,7 @@ class GyroidRBFOptimizer:
         mu_disspower:      float = 100.0,
         mu_kmin:           float = 0.0,
         solid_density_g_per_mm3: float = SOLID_DENSITY_G_PER_MM3,
-        func_callback:       callable | None = None,  # Optional callback after each iteration: func(iter_num, history)
+        func_callback:       callable | None = lambda i : None,  # Optional callback after each iteration: func(iter_num, history)
         opt1 = 1,
         opt2 = 1,
         Texterior = 0.0,
@@ -1123,10 +1123,15 @@ class GyroidRBFOptimizer:
         # Normalize sensitivity by the 99th-percentile magnitude to avoid a single
         # outlier cell (boundary singularity in the adjoint field) compressing the
         # bulk sensitivity to near-zero.  Clip any remaining spikes at ±3× the ref.
+        # Update with EMA (α=0.3) so the reference tracks the current scale rather
+        # than freezing at the first evaluation (which distorts gradients on large steps).
+        new_ref = float(np.percentile(np.abs(fsens_base), 99))
+        if new_ref == 0:
+            new_ref = float(np.abs(fsens_base).max()) or 1.0
         if not hasattr(self, '_fsens_ref'):
-            self._fsens_ref = float(np.percentile(np.abs(fsens_base), 99))
-            if self._fsens_ref == 0:
-                self._fsens_ref = float(np.abs(fsens_base).max()) or 1.0
+            self._fsens_ref = new_ref
+        else:
+            self._fsens_ref = 0.7 * self._fsens_ref + 0.3 * new_ref
         print(f"  fsens_ref (p99) = {self._fsens_ref:.4g}   max = {np.abs(fsens_base).max():.4g}")
         fsens_clipped = np.clip(fsens_base, -3.0 * self._fsens_ref, 3.0 * self._fsens_ref)
         fsens_norm = fsens_clipped / self._fsens_ref
@@ -1239,7 +1244,7 @@ class GyroidRBFOptimizer:
         }
 
         grad_ctrl = chain_rule_gradient(
-            fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
+            -fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
         ) + grad_ctrl_oh           # (N_ctrl, 3)
         grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
 
@@ -1341,6 +1346,93 @@ class GyroidRBFOptimizer:
                 delattr(self, attr)
         # _T_ref and _P_ref are intentionally kept for consistent Pareto scaling
 
+    # ── MMA solver ────────────────────────────────────────────────────────────
+
+    def _run_mma(self, x_init: np.ndarray, n_iters: int) -> np.ndarray:
+        """
+        Svanberg Method of Moving Asymptotes for bound-constrained optimization.
+
+        At each step, the objective is replaced by a separable convex approximation
+        with adaptive asymptotes L_j, U_j.  The separable subproblem decomposes
+        analytically: x_j* = (√p_j·L_j + √q_j·U_j) / (√p_j + √q_j), clipped to
+        move-limited bounds [α_j, β_j].
+
+        Asymptote update (Svanberg 2002):
+          - First 2 iters  : L = x - asyinit·D,  U = x + asyinit·D
+          - Later iters    : L = x - γ·(x_prev - L_prev),  U = x + γ·(U_prev - x_prev)
+              γ = 1.2 if monotone, 0.7 if oscillating, 1.0 otherwise
+        """
+        xmin = np.array([b[0] for b in self.bounds])
+        xmax = np.array([b[1] for b in self.bounds])
+        D = xmax - xmin          # variable range
+
+        asyinit = 0.5            # initial asymptote distance as fraction of D
+        asyincr = 1.2            # expand asymptotes when monotone
+        asydecr = 0.7            # shrink asymptotes when oscillating
+        albefa  = 0.1            # inner fraction of asymptote interval for move limit
+        move    = 0.2            # max move as fraction of D (Svanberg default: 0.1-0.5)
+        eps_mma = 1e-8           # p/q floor to keep subproblem well-defined
+
+        x       = x_init.copy()
+        x_prev  = None
+        x_prev2 = None
+        L_prev  = None
+        U_prev  = None
+
+        x_best  = x.copy()
+        J_best  = float('inf')
+
+        for k in range(n_iters):
+            J, grad = self.objective_and_gradient(x)
+
+            if J < J_best:
+                J_best = J
+                x_best = x.copy()
+
+            # ── Asymptote update ──────────────────────────────────────────────
+            if k < 2 or x_prev is None or x_prev2 is None:
+                L = x - asyinit * D
+                U = x + asyinit * D
+            else:
+                xi    = (x - x_prev) * (x_prev - x_prev2)
+                gamma = np.where(xi > 0, asyincr, np.where(xi < 0, asydecr, 1.0))
+                L = x - gamma * (x_prev - L_prev)
+                U = x + gamma * (U_prev - x_prev)
+            # Svanberg clamping: keep asymptotes at least 0.01·D from x
+            L = np.clip(L, x - 10.0 * D, x - 0.01 * D)
+            U = np.clip(U, x + 0.01 * D, x + 10.0 * D)
+
+            # ── Move limits (tighter of global fraction and asymptote fraction) ──
+            alpha = np.maximum(xmin, np.maximum(x - move * D, L + albefa * (x - L)))
+            beta  = np.minimum(xmax, np.minimum(x + move * D, U - albefa * (U - x)))
+
+            # ── Separable MMA approximation coefficients ──────────────────────
+            p = (U - x) ** 2 * np.maximum(0.0, grad)  + eps_mma
+            q = (x - L) ** 2 * np.maximum(0.0, -grad) + eps_mma
+
+            # ── Analytical subproblem solution (bound-constrained) ────────────
+            sp, sq = np.sqrt(p), np.sqrt(q)
+            x_new  = np.clip((sp * L + sq * U) / (sp + sq), alpha, beta)
+
+            delta = float(np.linalg.norm(x_new - x))
+            print(f"  MMA outer iter {k + 1}/{n_iters}: J={J:.6g}  ||Δx||={delta:.4g}  "
+                  f"J_best={J_best:.6g}")
+
+            # ── Advance state ─────────────────────────────────────────────────
+            x_prev2 = x_prev
+            x_prev  = x.copy()
+            L_prev  = L.copy()
+            U_prev  = U.copy()
+            x = x_new
+
+            self._on_accepted_step(x)
+
+            if delta < 1e-7 * (np.linalg.norm(x) + 1.0):
+                print("  MMA converged (||Δx|| below tolerance).")
+                break
+
+        return x_best
+
     # ── public entry point ────────────────────────────────────────────────────
 
     def run(
@@ -1348,15 +1440,17 @@ class GyroidRBFOptimizer:
         n_iters:   int            = 50,
         x0:        np.ndarray | None = None,
         load_ctrl: Path | None    = None,
+        method:    str            = 'L-BFGS-B',
     ) -> np.ndarray:
         """
         Optimise RBF control-point frequency perturbations.
 
         Parameters
         ----------
-        n_iters   : maximum number of outer L-BFGS-B steps
+        n_iters   : maximum number of outer iterations
         x0        : initial flat design vector (defaults to zero, i.e. uniform gyroid)
         load_ctrl : path to a previous gyroid_ctrl_pts.txt to warm-start
+        method    : 'L-BFGS-B' (default) or 'MMA'
 
         Returns
         -------
@@ -1371,23 +1465,25 @@ class GyroidRBFOptimizer:
         else:
             x_init = np.zeros(self.n_ctrl * 3)
 
-        print(f"\nStarting L-BFGS-B optimisation  ({n_iters} max outer iters)\n")
+        print(f"\nStarting {method} optimisation  ({n_iters} max outer iters)\n")
         self.save_ctrl_pts(x_init, tag='_init')
 
-        result = minimize(
-            self.objective_and_gradient,
-            x_init,
-            method='L-BFGS-B',
-            jac=True,
-            bounds=self.bounds,
-            callback=self._on_accepted_step,
-            options=dict(maxiter=n_iters, ftol=1e-30, gtol=1e-8, maxls=50, iprint=1),
-        )
+        if method == 'MMA':
+            x_opt = self._run_mma(x_init, n_iters)
+        else:
+            result = minimize(
+                self.objective_and_gradient,
+                x_init,
+                method='L-BFGS-B',
+                jac=True,
+                bounds=self.bounds,
+                callback=self._on_accepted_step,
+                options=dict(maxiter=n_iters, ftol=1e-30, gtol=1e-8, maxls=50, iprint=1),
+            )
+            print(f"\nOptimisation finished: {result.message}")
+            print(f"  Final J = {result.fun:.6g}   nit = {result.nit}")
+            x_opt = result.x
 
-        print(f"\nOptimisation finished: {result.message}")
-        print(f"  Final J = {result.fun:.6g}   nit = {result.nit}")
-
-        x_opt = result.x
         self.save_ctrl_pts(x_opt, tag='_optimised')
 
         gamma_final, _, _ = self._gamma_from_x(x_opt)
@@ -1574,6 +1670,8 @@ def main() -> None:
                         help='Upper bound on DissPower (constraint, only used in heat mode)')
     parser.add_argument('--mu-penalty', type=float, default=100.0,
                         help='Initial penalty multiplier for constraints (default: 100.0)')
+    parser.add_argument('--method', choices=['L-BFGS-B', 'MMA'], default='L-BFGS-B',
+                        help="Optimization algorithm: 'L-BFGS-B' (default) or 'MMA'")
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
@@ -1605,7 +1703,7 @@ def main() -> None:
         mu_mass          = args.mu_penalty,
         solid_density_g_per_mm3 = args.solid_density,
     )
-    opt.run(n_iters=args.iters, load_ctrl=warm)
+    opt.run(n_iters=args.iters, load_ctrl=warm, method=args.method)
 
 
 if __name__ == '__main__':

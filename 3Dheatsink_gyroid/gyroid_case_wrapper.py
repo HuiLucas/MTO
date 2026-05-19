@@ -131,6 +131,7 @@ class OptimizationSettings:
     pareto_n_weights: int
     pareto_iters_per_point: int
     pareto_warmstart: bool
+    method: str
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -319,6 +320,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         pareto_n_weights=int(optimization_cfg.get('pareto_n_weights', 9)),
         pareto_iters_per_point=int(optimization_cfg.get('pareto_iters_per_point', 30)),
         pareto_warmstart=bool(optimization_cfg.get('pareto_warmstart', True)),
+        method=str(optimization_cfg.get('method', 'L-BFGS-B')),
     )
 
     run = RunSettings(
@@ -992,7 +994,7 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
     opt_min = np.array([ox, oy, oz], dtype=float)
     opt_max = np.array([ox + sx, oy + sy, oz + sz], dtype=float)
     func_callback = lambda optvar : write_transport_properties(case_dir / 'constant', material, opt1=optvar[0], opt2=optvar[1])
-
+    print(f"Run parallel: {run.parallel}, optimizer will use {max(1, run.parallel)} cores")
     return GyroidRBFOptimizer(
         case_dir=case_dir,
             k_base=2.0 * math.pi / optimisation.unit,
@@ -1034,6 +1036,8 @@ def main() -> None:
     parser.add_argument('--skip-clean', action='store_true', help='Skip the cleanup step before preparing the case')
     parser.add_argument('--iters', type=int, default=None, help='Override the iteration count from the config')
     parser.add_argument('--load-ctrl', default=None, metavar='FILE', help='Warm-start from a previous gyroid_ctrl_pts_*.txt file')
+    parser.add_argument('--method', choices=['L-BFGS-B', 'MMA'], default=None,
+                        help="Override optimization algorithm: 'L-BFGS-B' (default) or 'MMA'")
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -1043,6 +1047,9 @@ def main() -> None:
 
     config = load_config(config_path)
     run, geometry, props, optimisation, inlet, outlet, turbulence, thermal = resolve_settings(config, args)
+
+    # CLI --method overrides the value resolved from the config
+    method = args.method if args.method is not None else optimisation.method
 
     case_dir = (script_dir / run.case).resolve()
     if not case_dir.is_dir():
@@ -1084,7 +1091,7 @@ def main() -> None:
             x0 = np.loadtxt(load_ctrl)[:, 3:6].ravel()
         explorer.run(x0=x0)
     else:
-        optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl)
+        optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl, method=method)
 
 
 if __name__ == '__main__':

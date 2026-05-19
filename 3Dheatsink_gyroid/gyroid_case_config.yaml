@@ -191,6 +191,10 @@ turbulence:
   print_coeffs: off
 
 optimization:
+
+  method: L-BFGS-B
+
+
   # Gyroid cell size in mm.
   # This sets the base TPMS frequency; change it to make the lattice finer or coarser.
   unit: 1.5
