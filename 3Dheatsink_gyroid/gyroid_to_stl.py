@@ -186,6 +186,34 @@ def mirror_mesh_y(verts: np.ndarray, faces: np.ndarray,
     return verts_out, faces_out
 
 
+def simplify_mesh_in_memory(verts: np.ndarray, faces: np.ndarray,
+                            target_faces: int) -> tuple[np.ndarray, np.ndarray]:
+    """Reduce triangle count with Open3D if the mesh exceeds target_faces."""
+    if len(faces) <= target_faces:
+        return verts, faces
+
+    print(f"\n  Simplifying mesh from {len(faces):,} down to {target_faces:,} faces...")
+    try:
+        import open3d as o3d
+
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(verts)
+        mesh.triangles = o3d.utility.Vector3iVector(faces)
+
+        mesh = mesh.simplify_quadric_decimation(
+            target_number_of_triangles=target_faces
+        )
+
+        verts_simplified = np.asarray(mesh.vertices)
+        faces_simplified = np.asarray(mesh.triangles)
+        print(f"  Simplified to: {len(verts_simplified):,} vertices, {len(faces_simplified):,} triangles")
+        return verts_simplified, faces_simplified
+    except ImportError:
+        print("  WARNING: 'open3d' not installed. Skipping decimation.")
+        print("  To enable automatic size reduction, run: pip install open3d")
+        return verts, faces
+
+
 # ── YAML config reader (optional) ────────────────────────────────────────────
 
 def read_yaml_params(yaml_path: Path) -> dict:
@@ -256,8 +284,10 @@ def main() -> None:
                         help='Minimum physical wall thickness in mm (must match optimizer --wall)')
     parser.add_argument('--kbound',  type=float, default=defaults['kbound'],
                         help='±bound on dk in rad/mm (must match optimizer --kbound); used to compute G-threshold')
-    parser.add_argument('--res',     type=float, default=0.025,
+    parser.add_argument('--res',     type=float, default=0.01,
                         help='Voxel size in mm – smaller = higher definition')
+    parser.add_argument('--target-faces', type=int, default=5_000_000,
+                        help='Maximum face count after in-memory mesh decimation')
     parser.add_argument('--xmin',    type=float, default=defaults['xmin'])
     parser.add_argument('--xmax',    type=float, default=defaults['xmax'])
     parser.add_argument('--ymin',    type=float, default=defaults['ymin'])
@@ -357,6 +387,10 @@ def main() -> None:
         print(f"  Mirroring across y = {args.ymax} …")
         verts, faces = mirror_mesh_y(verts, faces, y_mirror=args.ymax)
         print(f"  After mirror: {len(verts):,} vertices, {len(faces):,} triangles")
+
+    # ── Optional in-memory decimation ────────────────────────────────────────
+    if args.target_faces > 0:
+        verts, faces = simplify_mesh_in_memory(verts, faces, args.target_faces)
 
     # ── Write STL ─────────────────────────────────────────────────────────────
     print(f"\n  Writing STL …")

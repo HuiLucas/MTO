@@ -120,6 +120,7 @@ dependencies:
       - nest-asyncio2==1.7.2
       - numpy-stl==3.2.0
       - overrides==7.7.0
+      - open3d
       - pandocfilters==1.5.1
       - pillow==12.2.0
       - pooch==1.9.0

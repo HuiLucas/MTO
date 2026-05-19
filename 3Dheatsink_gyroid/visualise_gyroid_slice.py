@@ -32,6 +32,36 @@ from scipy.special import expit
 _GYROID_GRAD_MAX = math.sqrt(3)   # max |∇G|/k on the gyroid surface
 
 
+# ── YAML config reader (optional) ────────────────────────────────────────────
+
+def read_yaml_params(yaml_path: Path) -> dict:
+    """Minimal YAML parser for gyroid_case_config.yaml – no PyYAML required."""
+    params = {}
+    try:
+        import yaml
+        with open(yaml_path) as fh:
+            cfg = yaml.safe_load(fh)
+        opt = cfg.get('optimization', {})
+        params['unit'] = float(opt.get('unit', 1.5))
+        params['wall'] = float(opt.get('wall', 0.30))
+        geo = cfg.get('geometry', {})
+        size = geo.get('size_mm', [4.0, 2.5, 10.0])
+        params['xmax'] = float(size[0])
+        params['ymax'] = float(size[1])
+        params['zmax'] = float(size[2])
+    except ImportError:
+        text = yaml_path.read_text()
+        for line in text.splitlines():
+            line = line.strip()
+            for key in ('unit', 'wall'):
+                if line.startswith(key + ':'):
+                    try:
+                        params[key] = float(line.split(':')[1].strip().split()[0])
+                    except (IndexError, ValueError):
+                        pass
+    return params
+
+
 # ── I/O ───────────────────────────────────────────────────────────────────────
 
 def load_ctrl_pts(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -83,27 +113,48 @@ def gyroid_sdf(pts_mm: np.ndarray,
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    script_dir = Path(__file__).parent
+
+    # ── defaults – can be overridden by --config then by explicit flags ────────
+    defaults = dict(unit=1.5, wall=0.30,
+                    xmin=0.0, xmax=4.0,
+                    ymin=0.0, ymax=2.5,
+                    zmax=10.0)
+
+    # Pre-scan for --config so we can load it before argparse finalises defaults
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument('--config', default=None)
+    pre_args, _ = pre.parse_known_args()
+    if pre_args.config:
+        cfg = read_yaml_params(Path(pre_args.config))
+        defaults.update(cfg)
+    elif (script_dir / 'gyroid_case_config.yaml').exists():
+        cfg = read_yaml_params(script_dir / 'gyroid_case_config.yaml')
+        defaults.update(cfg)
+
     parser = argparse.ArgumentParser(
         description='High-resolution Gyroid SDF slice visualiser.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument('ctrl_pts',
                         help='gyroid_ctrl_pts_*.txt produced by the optimizer')
-    parser.add_argument('--z',       type=float, default=8.0,
+    parser.add_argument('--config',  default=None,
+                        help='Path to gyroid_case_config.yaml (auto-detected if omitted)')
+    parser.add_argument('--z',       type=float, default=defaults['zmax'] / 2,
                         help='z-position of the slice (mm)')
-    parser.add_argument('--xmin',    type=float, default=0.0,
+    parser.add_argument('--xmin',    type=float, default=defaults['xmin'],
                         help='x lower bound (mm)')
-    parser.add_argument('--xmax',    type=float, default=4.0,
+    parser.add_argument('--xmax',    type=float, default=defaults['xmax'],
                         help='x upper bound (mm)')
-    parser.add_argument('--ymin',    type=float, default=0.0,
+    parser.add_argument('--ymin',    type=float, default=defaults['ymin'],
                         help='y lower bound (mm)')
-    parser.add_argument('--ymax',    type=float, default=2.5,
+    parser.add_argument('--ymax',    type=float, default=defaults['ymax'],
                         help='y upper bound (mm)')
     parser.add_argument('--nx',      type=int,   default=2000,
                         help='Grid resolution in x (y is set proportionally)')
-    parser.add_argument('--unit',    type=float, default=1.5,
+    parser.add_argument('--unit',    type=float, default=defaults['unit'],
                         help='Gyroid cell size in mm → k_base = 2π/unit')
-    parser.add_argument('--wall',    type=float, default=0.30,
+    parser.add_argument('--wall',    type=float, default=defaults['wall'],
                         help='Minimum physical wall thickness (mm)')
     parser.add_argument('--epsilon', type=float, default=0.04,
                         help='Smooth-Heaviside sharpness (mm)')

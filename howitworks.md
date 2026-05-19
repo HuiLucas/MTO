@@ -35,6 +35,7 @@ Read the yaml file to choose the correct inputs
 
 ## TODO:
 - Truly parallelize
+- Fix scale
 - Reduce conductivity such that temperature is less homogeneous through heat exchanger and the geometry actually influences oulet temperature
 - Better optimizer that actually performs more iterations in comparison to evaluations.
 - Create opt3 that controls Heaviside thickness
