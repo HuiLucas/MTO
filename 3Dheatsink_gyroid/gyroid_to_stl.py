@@ -138,6 +138,79 @@ def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
     return sdf
 
 
+# ── Encapsulation wall mesh (analytic) ───────────────────────────────────────
+
+def _box_mesh(lo: np.ndarray, hi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return (verts, faces) for a closed axis-aligned box with outward normals."""
+    x0, y0, z0 = lo
+    x1, y1, z1 = hi
+    v = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],  # 0-3 z=z0
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],  # 4-7 z=z1
+    ], dtype=np.float32)
+    f = np.array([
+        [0, 3, 2], [0, 2, 1],  # bottom  −z
+        [4, 5, 6], [4, 6, 7],  # top     +z
+        [0, 1, 5], [0, 5, 4],  # front   −y
+        [2, 3, 7], [2, 7, 6],  # back    +y
+        [3, 0, 4], [3, 4, 7],  # left    −x
+        [1, 2, 6], [1, 6, 5],  # right   +x
+    ], dtype=np.int32)
+    return v, f
+
+
+def build_encap_mesh(xmin: float, xmax: float,
+                     ymin: float, ymax: float,
+                     zmin: float, zmax: float,
+                     thickness: float,
+                     open_faces: set) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build the encapsulation wall mesh analytically as closed rectangular prisms.
+
+    Each closed face gets one box placed immediately outside the domain boundary.
+    Adjacent closed faces share corner volumes (the corner region is covered by
+    both neighbouring boxes), which is fine for slicers and 3-D printing.
+    The perpendicular extent of each box mirrors the SDF logic: on closed sides
+    the box reaches t beyond the domain (filling the corner); on open sides it
+    stops exactly at the domain boundary (generating a visible end-cap face).
+
+    Returns (verts (N,3), faces (M,3)) ready to concatenate with the lattice mesh.
+    Valid face names: xmin, xmax, ymin, ymax, zmin, zmax.
+    """
+    t = thickness
+    x_lo = xmin - t if 'xmin' not in open_faces else xmin
+    x_hi = xmax + t if 'xmax' not in open_faces else xmax
+    y_lo = ymin - t if 'ymin' not in open_faces else ymin
+    y_hi = ymax + t if 'ymax' not in open_faces else ymax
+    z_lo = zmin - t if 'zmin' not in open_faces else zmin
+    z_hi = zmax + t if 'zmax' not in open_faces else zmax
+
+    boxes: list[tuple] = []
+    if 'xmin' not in open_faces:
+        boxes.append(([xmin - t, y_lo, z_lo], [xmin,     y_hi, z_hi]))
+    if 'xmax' not in open_faces:
+        boxes.append(([xmax,     y_lo, z_lo], [xmax + t, y_hi, z_hi]))
+    if 'ymin' not in open_faces:
+        boxes.append(([x_lo, ymin - t, z_lo], [x_hi, ymin,     z_hi]))
+    if 'ymax' not in open_faces:
+        boxes.append(([x_lo, ymax,     z_lo], [x_hi, ymax + t, z_hi]))
+    if 'zmin' not in open_faces:
+        boxes.append(([x_lo, y_lo, zmin - t], [x_hi, y_hi, zmin    ]))
+    if 'zmax' not in open_faces:
+        boxes.append(([x_lo, y_lo, zmax    ], [x_hi, y_hi, zmax + t]))
+
+    if not boxes:
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
+
+    all_v, all_f, offset = [], [], 0
+    for lo, hi in boxes:
+        v, f = _box_mesh(np.array(lo, dtype=np.float32), np.array(hi, dtype=np.float32))
+        all_v.append(v)
+        all_f.append(f + offset)
+        offset += len(v)
+    return np.concatenate(all_v), np.concatenate(all_f)
+
+
 # ── STL writer (vectorised binary) ────────────────────────────────────────────
 
 def write_binary_stl(path: Path, verts: np.ndarray, faces: np.ndarray) -> None:
@@ -232,6 +305,8 @@ def read_yaml_params(yaml_path: Path) -> dict:
         params['xmax'] = float(size[0])
         params['ymax'] = float(size[1])
         params['zmax'] = float(size[2])
+        params['encap_wall_mm']    = float(geo.get('encap_wall_mm', 0.0))
+        params['encap_open_faces'] = list(geo.get('encap_open_faces', ['zmin', 'zmax']))
     except ImportError:
         # Fallback: naive line-by-line parse for the three keys we need
         text = yaml_path.read_text()
@@ -255,7 +330,9 @@ def main() -> None:
     defaults = dict(unit=1.5, wall=0.30, kbound=2.0,
                     xmin=0.0, xmax=4.0,
                     ymin=0.0, ymax=2.5,
-                    zmin=0.0, zmax=10.0)
+                    zmin=0.0, zmax=10.0,
+                    encap_wall_mm=0.0,
+                    encap_open_faces=['zmin', 'zmax'])
 
     # Pre-scan for --config so we can load it before argparse finalises defaults
     pre = argparse.ArgumentParser(add_help=False)
@@ -298,6 +375,18 @@ def main() -> None:
                         help='Mirror across y = ymax to reconstruct the full part from a half-symmetry domain')
     parser.add_argument('--bake',    type=float, default=0.3,
                         help='RBF bake-grid spacing in mm (controls RBF evaluation accuracy)')
+    parser.add_argument('--encap-wall', type=float, default=defaults['encap_wall_mm'],
+                        dest='encap_wall',
+                        help='Encapsulation shell thickness in mm (0 = disabled). '
+                             'Adds solid outer walls that seal the heat-exchanger body.')
+    parser.add_argument('--encap-open-faces', nargs='+',
+                        default=defaults['encap_open_faces'],
+                        dest='encap_open_faces',
+                        metavar='FACE',
+                        help='Domain faces left open in the encapsulation shell '
+                             '(xmin xmax ymin ymax zmin zmax). '
+                             'Typically the inlet/outlet faces. '
+                             'When --mirror-y is used, add ymax to keep the symmetry plane open.')
     args = parser.parse_args()
 
     ctrl_path = Path(args.ctrl)
@@ -321,7 +410,6 @@ def main() -> None:
     print(f"  Voxel size : {res} mm")
     print(f"  Domain     : x[{args.xmin},{args.xmax}]  "
           f"y[{args.ymin},{args.ymax}]  z[{args.zmin},{args.zmax}]  mm")
-
     # ── Build voxel grid axes ──────────────────────────────────────────────────
     xv = np.arange(args.xmin, args.xmax + res, res, dtype=np.float32)
     yv = np.arange(args.ymin, args.ymax + res, res, dtype=np.float32)
@@ -332,6 +420,17 @@ def main() -> None:
     zv = zv[zv <= args.zmax + 1e-9]
     print(f"  Grid       : {len(xv)} × {len(yv)} × {len(zv)} "
           f"= {len(xv)*len(yv)*len(zv):,} voxels")
+
+    # ── Resolve encapsulation open_faces (needed before grid extension) ────────
+    open_faces: set = set()
+    if args.encap_wall > 0:
+        open_faces = set(args.encap_open_faces)
+        if args.mirror_y and 'ymax' not in open_faces:
+            # ymax is the symmetry plane – a wall there creates a double slab at
+            # the centre of the mirrored domain.  The mirrored ymin wall is the
+            # correct far-side outer wall after mirror_mesh_y.
+            open_faces.add('ymax')
+        print(f"  Encap wall : {args.encap_wall} mm  (open faces: {sorted(open_faces)})")
 
     # ── Load control points ────────────────────────────────────────────────────
     rbf_field = None
@@ -363,34 +462,51 @@ def main() -> None:
     print(f"  SDF range: [{sdf.min():.4g}, {sdf.max():.4g}]"
           f"   solid_frac ≈ {(sdf < 0).mean():.3f}")
 
-    # ── Marching cubes at level 0 ──────────────────────────────────────────────
-    print(f"\n  Running marching cubes …")
-    verts_idx, faces, normals_mc, _ = marching_cubes(
+    # ── Marching cubes on gyroid lattice (original domain) ────────────────────
+    print(f"\n  Running marching cubes (lattice) …")
+    verts_idx, faces, _, _ = marching_cubes(
         sdf,
         level=0.0,
-        spacing=(res, res, res),   # converts voxel indices → mm
+        spacing=(res, res, res),
         gradient_direction='descent',
         allow_degenerate=False,
     )
-
-    # marching_cubes returns coords relative to the grid origin; shift to domain
+    del sdf
     verts = verts_idx + np.array([args.xmin, args.ymin, args.zmin], dtype=np.float32)
-
     print(f"  Extracted  : {len(verts):,} vertices, {len(faces):,} triangles")
 
     if len(faces) == 0:
         sys.exit("  ERROR: no isosurface found – check that half_thickness is within "
                  "the range of |G| (G_max ≈ 1.5 for standard gyroid).")
 
-    # ── Optional y-mirror ─────────────────────────────────────────────────────
+    # ── Optional y-mirror (lattice) ───────────────────────────────────────────
     if args.mirror_y:
-        print(f"  Mirroring across y = {args.ymax} …")
+        print(f"  Mirroring lattice across y = {args.ymax} …")
         verts, faces = mirror_mesh_y(verts, faces, y_mirror=args.ymax)
         print(f"  After mirror: {len(verts):,} vertices, {len(faces):,} triangles")
 
-    # ── Optional in-memory decimation ────────────────────────────────────────
+    # ── Decimate lattice before adding encapsulation ───────────────────────────
     if args.target_faces > 0:
         verts, faces = simplify_mesh_in_memory(verts, faces, args.target_faces)
+
+    # ── Optional encapsulation: analytic box mesh, appended after decimation ───
+    if args.encap_wall > 0:
+        print(f"\n  Building encapsulation mesh (t = {args.encap_wall} mm) …")
+        enc_verts, enc_faces = build_encap_mesh(
+            args.xmin, args.xmax,
+            args.ymin, args.ymax,
+            args.zmin, args.zmax,
+            args.encap_wall, open_faces,
+        )
+        print(f"  Encap mesh : {len(enc_verts):,} vertices, {len(enc_faces):,} triangles")
+
+        if args.mirror_y:
+            enc_verts, enc_faces = mirror_mesh_y(enc_verts, enc_faces, y_mirror=args.ymax)
+
+        enc_faces = enc_faces + len(verts)
+        verts = np.concatenate([verts, enc_verts], axis=0)
+        faces = np.concatenate([faces, enc_faces], axis=0)
+        print(f"  Total      : {len(verts):,} vertices, {len(faces):,} triangles")
 
     # ── Write STL ─────────────────────────────────────────────────────────────
     print(f"\n  Writing STL …")

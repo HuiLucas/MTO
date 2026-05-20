@@ -48,6 +48,17 @@ geometry:
   # The inlet is placed on the minimum face of this axis and the outlet on the maximum face.
   flow_axis: z
 
+  # Encapsulation wall thickness in mm. Set to 0.0 to omit the outer shell.
+  # When non-zero, gyroid_to_stl.py adds a solid box shell of this thickness around
+  # the closed domain faces, sealing the heat-exchanger body for 3-D printing.
+  encap_wall_mm: 0.1
+
+  # Domain faces left open (not enclosed) in the encapsulation shell.
+  # Typically the inlet and outlet faces so fluid can enter and exit.
+  # Valid identifiers: xmin, xmax, ymin, ymax, zmin, zmax.
+  # When --mirror-y is used, ymax is automatically treated as open (symmetry plane).
+  encap_open_faces: [zmin, zmax]
+
 inlet:
   # Which face of the flow axis carries the inlet window.
   # Use min for the low side of the flow axis, or max for the opposite side.
