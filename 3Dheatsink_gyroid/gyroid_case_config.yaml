@@ -27,7 +27,7 @@ run:
 
   # Maximum number of outer optimizer iterations.
   # Increase for a longer optimization run; decrease for a quick test.
-  iters: 50
+  iters: 100
 
   
 
@@ -248,7 +248,7 @@ optimization:
 
   # Overhang penalty weight.
   # Increase this if overhang violations should dominate the penalty.
-  mu_overhang: 1.0
+  mu_overhang: 81000.0
 
   # Disable the overhang constraint entirely when true.
   no_overhang: false
