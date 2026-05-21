@@ -361,7 +361,7 @@ def main() -> None:
                         help='Minimum physical wall thickness in mm (must match optimizer --wall)')
     parser.add_argument('--kbound',  type=float, default=defaults['kbound'],
                         help='±bound on dk in rad/mm (must match optimizer --kbound); used to compute G-threshold')
-    parser.add_argument('--res',     type=float, default=0.01,
+    parser.add_argument('--res',     type=float, default=0.008,
                         help='Voxel size in mm – smaller = higher definition')
     parser.add_argument('--target-faces', type=int, default=5_000_000,
                         help='Maximum face count after in-memory mesh decimation')
@@ -462,17 +462,28 @@ def main() -> None:
     print(f"  SDF range: [{sdf.min():.4g}, {sdf.max():.4g}]"
           f"   solid_frac ≈ {(sdf < 0).mean():.3f}")
 
-    # ── Marching cubes on gyroid lattice (original domain) ────────────────────
+    # ── Close the lattice: pad all 6 faces with one solid voxel ─────────────────
+    # Each boundary face gets a layer of –1 (solid) just outside the domain.
+    # Marching cubes then generates flat cap triangles that seal every open edge
+    # where the gyroid sheet is cut off at the domain wall, producing a
+    # water-tight closed solid.
+    sdf_closed = np.pad(sdf, 1, constant_values=np.float32(1.0))
+    del sdf
+    # Origin shifts back by one voxel to match the padded grid.
+    mc_origin = np.array([args.xmin - res, args.ymin - res, args.zmin - res],
+                         dtype=np.float32)
+
+    # ── Marching cubes on gyroid lattice ──────────────────────────────────────
     print(f"\n  Running marching cubes (lattice) …")
     verts_idx, faces, _, _ = marching_cubes(
-        sdf,
+        sdf_closed,
         level=0.0,
         spacing=(res, res, res),
         gradient_direction='descent',
         allow_degenerate=False,
     )
-    del sdf
-    verts = verts_idx + np.array([args.xmin, args.ymin, args.zmin], dtype=np.float32)
+    del sdf_closed
+    verts = verts_idx + mc_origin
     print(f"  Extracted  : {len(verts):,} vertices, {len(faces):,} triangles")
 
     if len(faces) == 0:
@@ -485,33 +496,38 @@ def main() -> None:
         verts, faces = mirror_mesh_y(verts, faces, y_mirror=args.ymax)
         print(f"  After mirror: {len(verts):,} vertices, {len(faces):,} triangles")
 
-    # ── Decimate lattice before adding encapsulation ───────────────────────────
+    # ── Decimate lattice ──────────────────────────────────────────────────────
     if args.target_faces > 0:
         verts, faces = simplify_mesh_in_memory(verts, faces, args.target_faces)
 
-    # ── Optional encapsulation: analytic box mesh, appended after decimation ───
+    # ── Optional encapsulation: analytic box mesh (separate solid) ────────────
+    encap_verts = encap_faces = None
     if args.encap_wall > 0:
         print(f"\n  Building encapsulation mesh (t = {args.encap_wall} mm) …")
-        enc_verts, enc_faces = build_encap_mesh(
+        encap_verts, encap_faces = build_encap_mesh(
             args.xmin, args.xmax,
             args.ymin, args.ymax,
             args.zmin, args.zmax,
             args.encap_wall, open_faces,
         )
-        print(f"  Encap mesh : {len(enc_verts):,} vertices, {len(enc_faces):,} triangles")
+        print(f"  Encap mesh : {len(encap_verts):,} vertices, {len(encap_faces):,} triangles")
 
         if args.mirror_y:
-            enc_verts, enc_faces = mirror_mesh_y(enc_verts, enc_faces, y_mirror=args.ymax)
+            encap_verts, encap_faces = mirror_mesh_y(encap_verts, encap_faces,
+                                                     y_mirror=args.ymax)
 
-        enc_faces = enc_faces + len(verts)
-        verts = np.concatenate([verts, enc_verts], axis=0)
-        faces = np.concatenate([faces, enc_faces], axis=0)
-        print(f"  Total      : {len(verts):,} vertices, {len(faces):,} triangles")
-
-    # ── Write STL ─────────────────────────────────────────────────────────────
+    # ── Write STL(s) ──────────────────────────────────────────────────────────
     print(f"\n  Writing STL …")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    write_binary_stl(out_path, verts, faces)
+
+    if encap_verts is not None:
+        # Two separate closed solids → two files derived from --out.
+        lattice_path = out_path.with_name(out_path.stem + '_lattice' + out_path.suffix)
+        encap_path   = out_path.with_name(out_path.stem + '_encap'   + out_path.suffix)
+        write_binary_stl(lattice_path, verts, faces)
+        write_binary_stl(encap_path,   encap_verts, encap_faces)
+    else:
+        write_binary_stl(out_path, verts, faces)
 
     print(f"\n  Done.")
 

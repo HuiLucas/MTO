@@ -27,7 +27,7 @@ run:
 
   # Maximum number of outer optimizer iterations.
   # Increase for a longer optimization run; decrease for a quick test.
-  iters: 100
+  iters: 300
 
   
 
