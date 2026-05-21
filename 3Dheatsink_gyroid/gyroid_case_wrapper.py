@@ -177,6 +177,33 @@ def _as_foam_switch(value: object) -> str:
     return s
 
 
+def _parse_last_history_row(path: Path) -> dict | None:
+    """Return a dict of the last data row in the optimisation history file.
+
+    Column names come from the first (header) line.  Values are float where
+    the conversion succeeds, strings otherwise (e.g. mode name, 'nan').
+    Returns None when the file is absent, empty, or contains only a header.
+    """
+    try:
+        lines = [l for l in path.read_text().splitlines() if l.strip()]
+    except OSError:
+        return None
+    if len(lines) < 2:
+        return None
+    header = lines[0].split()
+    for line in reversed(lines[1:]):
+        parts = line.split()
+        if len(parts) == len(header):
+            row: dict = {}
+            for key, val in zip(header, parts):
+                try:
+                    row[key] = float(val)
+                except ValueError:
+                    row[key] = val
+            return row
+    return None
+
+
 def load_config(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -988,7 +1015,9 @@ def prepare_case(case_dir: Path, geometry: BoxGeometry, inlet: InletSettings, ou
 
 
 def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, optimisation: OptimizationSettings,
-                    material: MaterialProperties) -> GyroidRBFOptimizer:
+                    material: MaterialProperties,
+                    mu_penalty_override: float | None = None,
+                    mu_overhang_override: float | None = None) -> GyroidRBFOptimizer:
     ox, oy, oz = geometry.origin_mm
     sx, sy, sz = geometry.size_mm
     opt_min = np.array([ox, oy, oz], dtype=float)
@@ -1010,12 +1039,12 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
         opt_bounds_max=opt_max,
             am_theta_max=math.radians(optimisation.am_theta),
             am_P_bar=optimisation.am_P_bar,
-            am_mu_overhang=optimisation.mu_overhang,
+            am_mu_overhang=mu_overhang_override if mu_overhang_override is not None else optimisation.mu_overhang,
             use_overhang=not optimisation.no_overhang,
             mode='pareto' if optimisation.pareto_enabled else optimisation.mode,
             target_meanT=optimisation.meantT_max,
             target_disspower=optimisation.dissPower_max,
-            mu_mass=optimisation.mu_penalty,
+            mu_mass=mu_penalty_override if mu_penalty_override is not None else optimisation.mu_penalty,
             solid_density_g_per_mm3=material.solid_density_g_per_mm3,
             func_callback=func_callback,
             opt1 = 1,
@@ -1038,6 +1067,12 @@ def main() -> None:
     parser.add_argument('--load-ctrl', default=None, metavar='FILE', help='Warm-start from a previous gyroid_ctrl_pts_*.txt file')
     parser.add_argument('--method', choices=['L-BFGS-B', 'MMA'], default=None,
                         help="Override optimization algorithm: 'L-BFGS-B' (default) or 'MMA'")
+    parser.add_argument('--restart', action='store_true',
+                        help='Continue from the latest checkpoint in the case directory. '
+                             'Skips case cleaning and re-meshing so all existing run files '
+                             '(processor dirs, log files, time directories) are preserved. '
+                             'Reads adaptive mu values and the iteration count from the '
+                             'existing history file and appends new iterations to it.')
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -1055,28 +1090,72 @@ def main() -> None:
     if not case_dir.is_dir():
         raise SystemExit(f'ERROR: case directory not found: {case_dir}')
 
-    if not run.skip_clean:
+    # --restart forces skip_clean so no existing run files are removed.
+    effective_skip_clean = run.skip_clean or args.restart
+
+    if not effective_skip_clean:
         prepare_case(case_dir, geometry, inlet, outlet, props, turbulence, thermal, run.solver, max(1, run.parallel))
     else:
         write_block_mesh_dict(case_dir / 'system', geometry, inlet, outlet)
         write_topo_set_dict(case_dir / 'system', geometry)
         write_initial_velocity_field(case_dir, geometry, inlet)
         write_initial_temperature_field(case_dir, inlet, thermal, outlet)
+        write_initial_adjoint_temperature_field(case_dir)
         write_control_dict(case_dir / 'system', run.solver)
         write_decompose_par_dict(case_dir / 'system', n_subdomains=max(1, run.parallel))
         write_transport_properties(case_dir / 'constant', props)
         write_thermal_properties(case_dir / 'constant', props)
         write_turbulence_properties(case_dir / 'constant', turbulence)
 
-    run_command(['blockMesh', '-case', str(case_dir)], cwd=case_dir)
-    run_command(['topoSet', '-case', str(case_dir)], cwd=case_dir)
-    run_command([run.postprocess, '-func', 'writeCellCentres', '-time', '0', '-case', str(case_dir)], cwd=case_dir)
+    # Skip re-meshing on restart: the mesh and processor directories are
+    # unchanged and the existing CFD state serves as a warm start.
+    if not args.restart:
+        run_command(['blockMesh', '-case', str(case_dir)], cwd=case_dir)
+        run_command(['topoSet', '-case', str(case_dir)], cwd=case_dir)
+        run_command([run.postprocess, '-func', 'writeCellCentres', '-time', '0', '-case', str(case_dir)], cwd=case_dir)
 
-    if run.parallel > 1:
-        run_command(['decomposePar', '-force', '-case', str(case_dir)], cwd=case_dir)
+        if run.parallel > 1:
+            run_command(['decomposePar', '-force', '-case', str(case_dir)], cwd=case_dir)
 
-    load_ctrl = Path(args.load_ctrl).resolve() if args.load_ctrl else None
-    optimiser = build_optimizer(case_dir, geometry, run, optimisation, props)
+    # ── Restart: read adaptive mu values and iteration offset from history ─────
+    restart_mu_penalty: float | None = None
+    restart_mu_overhang: float | None = None
+    restart_iter_offset: int = 0
+
+    if args.restart:
+        _hist = case_dir / 'gyroid_opt_history.txt'
+        if _hist.exists():
+            last_row = _parse_last_history_row(_hist)
+            if last_row is not None:
+                restart_mu_penalty  = last_row.get('mu_penalty')
+                restart_mu_overhang = last_row.get('mu_oh')
+                restart_iter_offset = int(last_row.get('iter', 0))
+                print(f'[restart] Resuming from iter {restart_iter_offset}  '
+                      f'mu_penalty={restart_mu_penalty:.4g}  '
+                      f'mu_oh={restart_mu_overhang:.4g}')
+            else:
+                print(f'[restart] WARNING: cannot parse {_hist}; '
+                      'mu values taken from config')
+        else:
+            print(f'[restart] WARNING: no history file at {_hist}; '
+                  'mu values taken from config')
+
+    # ── Determine checkpoint to load ──────────────────────────────────────────
+    if args.restart:
+        _ctrl = case_dir / 'gyroid_ctrl_pts_checkpoint.txt'
+        if _ctrl.exists():
+            load_ctrl = _ctrl
+            print(f'[restart] Loading checkpoint: {load_ctrl}')
+        else:
+            print('[restart] WARNING: checkpoint not found; '
+                  'control points will start from zero')
+            load_ctrl = None
+    else:
+        load_ctrl = Path(args.load_ctrl).resolve() if args.load_ctrl else None
+
+    optimiser = build_optimizer(case_dir, geometry, run, optimisation, props,
+                                mu_penalty_override=restart_mu_penalty,
+                                mu_overhang_override=restart_mu_overhang)
 
     if optimisation.pareto_enabled:
         explorer = ParetoExplorer(
@@ -1091,7 +1170,8 @@ def main() -> None:
             x0 = np.loadtxt(load_ctrl)[:, 3:6].ravel()
         explorer.run(x0=x0)
     else:
-        optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl, method=method)
+        optimiser.run(n_iters=run.iters, load_ctrl=load_ctrl, method=method,
+                      iter_offset=restart_iter_offset)
 
 
 if __name__ == '__main__':

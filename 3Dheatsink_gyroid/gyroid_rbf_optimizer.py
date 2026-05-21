@@ -905,6 +905,8 @@ class GyroidRBFOptimizer:
         self._accepted_iter = 0
         self._pending_update: dict | None = None
         self._history: list[dict] = []
+        self._history_prefix_text: str = ''   # existing rows prepended on restart
+        self._iter_offset: int = 0            # iteration number offset for restart
         self._x_prev: np.ndarray | None = None
         self._best_J_aug: float = float('inf')
         self._best_x: np.ndarray | None = None
@@ -1054,7 +1056,7 @@ class GyroidRBFOptimizer:
         self.func_callback([self.opt1, self.opt2])
         #self.opt1 += 1
         #self.opt2 += 1
-        eval_iter = self._accepted_iter + 1
+        eval_iter = self._accepted_iter + 1 + self._iter_offset
         print(f"\n{'─'*60}")
         print(f"Outer iteration {eval_iter}  [mode: {self.mode}]")
         print(f"{'─'*60}")
@@ -1291,6 +1293,8 @@ class GyroidRBFOptimizer:
                 "g_disspower  pen_disspower  mu_penalty        "
                 "g_oh    pen_oh    mu_oh    grad_norm  delta_x    elapsed_s  alphaMax\n"
             )
+            if self._history_prefix_text:
+                f.write(self._history_prefix_text)
             for h in self._history:
                 f.write(
                     f"{h['iter']:4d}  {h.get('mode','heat'):6s}  {h['J']:12.6g}  "
@@ -1337,6 +1341,8 @@ class GyroidRBFOptimizer:
         self._accepted_iter = 0
         self._pending_update = None
         self._history = []
+        self._history_prefix_text = ''
+        self._iter_offset = 0
         self._x_prev = None
         self._best_J_aug = float('inf')
         self._best_x = None
@@ -1437,25 +1443,41 @@ class GyroidRBFOptimizer:
 
     def run(
         self,
-        n_iters:   int            = 50,
-        x0:        np.ndarray | None = None,
-        load_ctrl: Path | None    = None,
-        method:    str            = 'L-BFGS-B',
+        n_iters:     int              = 50,
+        x0:          np.ndarray | None = None,
+        load_ctrl:   Path | None      = None,
+        method:      str              = 'L-BFGS-B',
+        iter_offset: int              = 0,
     ) -> np.ndarray:
         """
         Optimise RBF control-point frequency perturbations.
 
         Parameters
         ----------
-        n_iters   : maximum number of outer iterations
-        x0        : initial flat design vector (defaults to zero, i.e. uniform gyroid)
-        load_ctrl : path to a previous gyroid_ctrl_pts.txt to warm-start
-        method    : 'L-BFGS-B' (default) or 'MMA'
+        n_iters     : maximum number of outer iterations
+        x0          : initial flat design vector (defaults to zero, i.e. uniform gyroid)
+        load_ctrl   : path to a previous gyroid_ctrl_pts.txt to warm-start
+        method      : 'L-BFGS-B' (default) or 'MMA'
+        iter_offset : add this value to every logged iteration number; also
+                      causes the existing history file to be read and prepended
+                      so the new rows append seamlessly to the old ones.
 
         Returns
         -------
         x_opt : optimised flat design vector (dk_x, dk_y, dk_z at each ctrl pt)
         """
+        self._iter_offset = iter_offset
+        # Pre-load existing history rows so _save_history can prepend them.
+        self._history_prefix_text = ''
+        if iter_offset > 0:
+            _hist_path = self.case_dir / 'gyroid_opt_history.txt'
+            if _hist_path.exists():
+                _lines = _hist_path.read_text().splitlines()
+                _data  = [l for l in _lines[1:] if l.strip()]   # skip header
+                if _data:
+                    self._history_prefix_text = '\n'.join(_data) + '\n'
+                    print(f"  [restart] Loaded {len(_data)} existing history rows as prefix")
+
         if x0 is not None:
             x_init = x0
         elif load_ctrl is not None:
