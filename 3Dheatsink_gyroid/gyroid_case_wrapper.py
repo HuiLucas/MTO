@@ -132,6 +132,7 @@ class OptimizationSettings:
     pareto_iters_per_point: int
     pareto_warmstart: bool
     method: str
+    build_direction: object | None
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -202,6 +203,24 @@ def _parse_last_history_row(path: Path) -> dict | None:
                     row[key] = val
             return row
     return None
+
+
+def _parse_build_direction(value: object) -> tuple[float, float, float] | None:
+    """Parse build_direction from YAML: accept 'x','y','z' or a 3-element list/tuple.
+
+    Returns a 3-tuple of floats or None if value is None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        s = value.strip().lower()
+        mapping = {'x': (1.0, 0.0, 0.0), 'y': (0.0, 1.0, 0.0), 'z': (0.0, 0.0, 1.0)}
+        if s in mapping:
+            return mapping[s]
+        raise ValueError(f"Invalid build_direction string: {value!r}; expected 'x','y' or 'z' or a 3-vector")
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        return (float(value[0]), float(value[1]), float(value[2]))
+    raise ValueError(f"Invalid build_direction: {value!r}; expected 'x','y','z' or [bx,by,bz]")
 
 
 def load_config(path: Path) -> dict:
@@ -348,6 +367,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         pareto_iters_per_point=int(optimization_cfg.get('pareto_iters_per_point', 30)),
         pareto_warmstart=bool(optimization_cfg.get('pareto_warmstart', True)),
         method=str(optimization_cfg.get('method', 'L-BFGS-B')),
+        build_direction=_parse_build_direction(optimization_cfg.get('build_direction', 'z')),
     )
 
     run = RunSettings(
@@ -1041,6 +1061,7 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
             am_P_bar=optimisation.am_P_bar,
             am_mu_overhang=mu_overhang_override if mu_overhang_override is not None else optimisation.mu_overhang,
             use_overhang=not optimisation.no_overhang,
+            am_build_direction=optimisation.build_direction,
             mode='pareto' if optimisation.pareto_enabled else optimisation.mode,
             target_meanT=optimisation.meantT_max,
             target_disspower=optimisation.dissPower_max,

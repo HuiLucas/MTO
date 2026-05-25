@@ -883,6 +883,7 @@ class GyroidRBFOptimizer:
         opt2 = 1,
         Texterior = 0.0,
         pareto_weight: float = 0.5,
+        am_build_direction: np.ndarray | None = None,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -992,6 +993,7 @@ class GyroidRBFOptimizer:
                 P_bar        = am_P_bar,
                 mu_overhang  = am_mu_overhang,
                 use_overhang = use_overhang,
+                build_direction = None if am_build_direction is None else np.asarray(am_build_direction, dtype=float)
             )
         else:
             self.am = None
