@@ -259,12 +259,12 @@ optimization:
 
   # Overhang penalty weight.
   # Increase this if overhang violations should dominate the penalty.
-  mu_overhang: 81000.0
+  mu_overhang: 8100.0
 
   # Build direction used by the AM overhang constraint. Can be a cardinal
   # axis string 'x', 'y', or 'z' or an explicit vector [bx, by, bz].
   # Default 'z' corresponds to printing upwards along +z.
-  build_direction: [0, 0, 1]
+  build_direction: [1, 1, 1]
 
   # Disable the overhang constraint entirely when true.
   no_overhang: false
