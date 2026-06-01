@@ -166,6 +166,118 @@ def compute_gyroid_overhang(
     return J_oh, grad_ctrl, {'g_oh': g_oh, 'pen_oh': J_oh}
 
 
+def compute_gyroid_overhang_raw(
+    pts_mm:  np.ndarray,
+    freq_mm: np.ndarray,
+    gamma:   np.ndarray,
+    sdf:     np.ndarray,
+    epsilon: float,
+    cos_max: float,
+    b_vec:   np.ndarray,
+    W:       np.ndarray,
+    eps_reg: float = 1e-6,
+) -> tuple[float, np.ndarray, dict]:
+    """
+    Analytic overhang constraint value g_oh and its gradient d(g_oh)/d(dk_ctrl).
+
+    Unlike compute_gyroid_overhang, this returns the raw surface-weighted mean
+    violation (not the penalised squared version) and its exact gradient, suitable
+    for use as a proper inequality constraint in trust-constr optimisers.
+
+    g_oh = sum_j(w_j * max(0, -cos_max - n_b_j)) / sum_j(w_j)
+
+    d(g_oh)/d(k_alpha_j) = (1/w_sum) *
+        sum_j [(viol_j - g_oh) * dw_j/dk_alpha  -  w_j * H(viol_j) * dn_b_j/dk_alpha]
+
+    where H is the Heaviside indicator (1 when viol > 0, else 0).
+
+    Returns
+    -------
+    g_oh       : float        surface-weighted mean overhang violation
+    grad_ctrl  : (N_ctrl, 3)  d(g_oh)/d(dk_ctrl); negate and pass to scipy constraint jac
+    info       : dict         {'g_oh'}
+    """
+    N = len(pts_mm)
+    x = pts_mm[:, 0];  y = pts_mm[:, 1];  z = pts_mm[:, 2]
+    kx = freq_mm[:, 0]; ky = freq_mm[:, 1]; kz = freq_mm[:, 2]
+    bx, by, bz = b_vec
+
+    sx = np.sin(kx * x);  cx = np.cos(kx * x)
+    sy = np.sin(ky * y);  cy = np.cos(ky * y)
+    sz = np.sin(kz * z);  cz = np.cos(kz * z)
+
+    G  = sx * cy + sy * cz + sz * cx
+    Ax = cx * cy - sz * sx
+    Ay = cy * cz - sx * sy
+    Az = cz * cx - sy * sz
+    Gx = kx * Ax
+    Gy = ky * Ay
+    Gz = kz * Az
+
+    ng2 = Gx**2 + Gy**2 + Gz**2 + eps_reg**2
+    ng  = np.sqrt(ng2)
+    inv_ng = 1.0 / ng
+
+    sG = np.sign(G)
+    sG[sG == 0] = 1.0
+    b_dot_gradG = bx * Gx + by * Gy + bz * Gz
+    n_b = sG * b_dot_gradG * inv_ng
+
+    viol  = np.maximum(0.0, -cos_max - n_b)
+    H_viol = (viol > 0.0).astype(float)
+    w     = gamma * (1.0 - gamma) / epsilon
+
+    w_sum = float(np.sum(w)) + 1e-30
+    g_oh  = float(np.sum(w * viol)) / w_sum
+
+    # ── Gradient of G w.r.t. k_alpha (spatial coords) ──────────────────────
+    dG_dkx = x * Ax
+    dG_dky = y * Ay
+    dG_dkz = z * Az
+
+    # Mixed partials ∂(∂G/∂coord)/∂k_alpha
+    dGx_dkx = Ax - kx * x * (sx * cy + sz * cx)
+    dGx_dky = -kx * y * cx * sy
+    dGx_dkz = -kx * z * cz * sx
+
+    dGy_dkx = -ky * x * cx * sy
+    dGy_dky = Ay - ky * y * (sy * cz + sx * cy)
+    dGy_dkz = -ky * z * cy * sz
+
+    dGz_dkx = -kz * x * cz * sx
+    dGz_dky = -kz * y * cy * sz
+    dGz_dkz = Az - kz * z * (sz * cx + sy * cz)
+
+    dBG_dkx = bx * dGx_dkx + by * dGy_dkx + bz * dGz_dkx
+    dBG_dky = bx * dGx_dky + by * dGy_dky + bz * dGz_dky
+    dBG_dkz = bx * dGx_dkz + by * dGy_dkz + bz * dGz_dkz
+
+    dng_dkx = (Gx * dGx_dkx + Gy * dGy_dkx + Gz * dGz_dkx) * inv_ng
+    dng_dky = (Gx * dGx_dky + Gy * dGy_dky + Gz * dGz_dky) * inv_ng
+    dng_dkz = (Gx * dGx_dkz + Gy * dGy_dkz + Gz * dGz_dkz) * inv_ng
+
+    dnb_dkx = sG * dBG_dkx * inv_ng - n_b * dng_dkx * inv_ng
+    dnb_dky = sG * dBG_dky * inv_ng - n_b * dng_dky * inv_ng
+    dnb_dkz = sG * dBG_dkz * inv_ng - n_b * dng_dkz * inv_ng
+
+    # ∂w/∂k_alpha = (1−2γ)·w/ε · sign(G) · ∂G/∂k_alpha
+    dw_factor = (1.0 - 2.0 * gamma) * w / epsilon * sG
+    dw_dkx = dw_factor * dG_dkx
+    dw_dky = dw_factor * dG_dky
+    dw_dkz = dw_factor * dG_dkz
+
+    # Per-cell weight: d(g_oh)/dk_alpha_j = (1/w_sum) * [
+    #   (viol_j - g_oh) * dw_j/dk_alpha  -  w_j * H(viol_j) * dnb_j/dk_alpha ]
+    c = 1.0 / w_sum
+    sk_x = c * ((viol - g_oh) * dw_dkx - w * H_viol * dnb_dkx)
+    sk_y = c * ((viol - g_oh) * dw_dky - w * H_viol * dnb_dky)
+    sk_z = c * ((viol - g_oh) * dw_dkz - w * H_viol * dnb_dkz)
+
+    grad_ctrl = np.stack([W.T @ sk_x, W.T @ sk_y, W.T @ sk_z], axis=1)  # (N_ctrl, 3)
+
+    return g_oh, grad_ctrl, {'g_oh': g_oh}
+
+
 # ── Parameter container ───────────────────────────────────────────────────────
 
 class AMConstraints:

@@ -57,7 +57,7 @@ from scipy.interpolate import RBFInterpolator
 from scipy.optimize import minimize
 from scipy.special import expit  # numerically stable sigmoid
 
-from am_constraints import AMConstraints, compute_gyroid_overhang
+from am_constraints import AMConstraints, compute_gyroid_overhang, compute_gyroid_overhang_raw
 
 # ── Physical / geometry parameters ─────────────────────────────────────────────
 # blockMeshDict uses convertToMeters 0.01  →  mesh coords in metres
@@ -911,6 +911,8 @@ class GyroidRBFOptimizer:
         self._x_prev: np.ndarray | None = None
         self._best_J_aug: float = float('inf')
         self._best_x: np.ndarray | None = None
+        self._tc_cache_key: bytes | None = None
+        self._tc_cache: dict | None = None
         
         # ── Optimisation mode and constraints ──────────────────────────────────
         self.mode           = mode  # 'heat' or 'pressure'
@@ -1349,6 +1351,8 @@ class GyroidRBFOptimizer:
         self._best_J_aug = float('inf')
         self._best_x = None
         self._mu_adaptive = self.mu_penalty
+        self._tc_cache_key: bytes | None = None
+        self._tc_cache: dict | None = None
         for attr in ('_fsens_ref', '_meanT_sens_ref', '_fsens_ref_P'):
             if hasattr(self, attr):
                 delattr(self, attr)
@@ -1441,6 +1445,252 @@ class GyroidRBFOptimizer:
 
         return x_best
 
+    # ── trust-constr: cached simulation and proper constraint enforcement ─────
+
+    def _simulate_for_tc(self, x: np.ndarray) -> dict:
+        """Run one OpenFOAM evaluation and return all objective/constraint data.
+
+        Results are cached by the byte fingerprint of x so that scipy's
+        trust-constr can call the objective, its Jacobian, each constraint
+        function, and each constraint Jacobian at the same x without
+        re-launching the solver.
+        """
+        key = x.tobytes()
+        if self._tc_cache_key == key:
+            return self._tc_cache  # type: ignore[return-value]
+
+        t0 = time.time()
+        self._accepted_iter += 1
+        eval_iter = self._accepted_iter + self._iter_offset
+
+        print(f"\n{'─'*60}")
+        print(f"[trust-constr] Evaluation {eval_iter}  [mode: {self.mode}]")
+        print(f"{'─'*60}")
+
+        self.func_callback([self.opt1, self.opt2])
+
+        gamma, sdf, freq_mm = self._gamma_from_x(x)
+        dk_mm = freq_mm - self.k_base
+        print(f"  gamma:  min={gamma.min():.3f}  max={gamma.max():.3f}  "
+              f"mean={gamma.mean():.3f}  solid_frac={1-gamma.mean():.3f}")
+        print(f"  dk:     min={dk_mm.min():.4f}  max={dk_mm.max():.4f} rad/mm")
+
+        gamma_path = self.case_dir / '0' / 'gamma'
+        write_gamma_field(gamma_path, gamma, '0')
+
+        try:
+            run_openfoam_one_step(
+                self.case_dir, 0, 1, self.solver, self.n_procs, iter_num=eval_iter
+            )
+        finally:
+            backup_latest_fluid_state(self.case_dir)
+
+        meanT, dissPower, massflow, deltaP, outletT, alphaMax = read_objective(self.case_dir)
+
+        # Read both sensitivity fields (needed for objective and constraint gradients)
+        fsens_T = read_adjoint_sensitivity(self.case_dir, 'fsens')
+        try:
+            fsens_P = read_adjoint_sensitivity(self.case_dir, 'gsens_U')
+        except FileNotFoundError:
+            fsens_P = None
+
+        # Normalize each field independently (clip outlier spikes, preserve direction)
+        def _norm(fsens: np.ndarray) -> tuple[np.ndarray, float]:
+            ref = float(np.percentile(np.abs(fsens), 99))
+            if ref == 0.0:
+                ref = float(np.abs(fsens).max()) or 1.0
+            return np.clip(fsens, -3.0 * ref, 3.0 * ref) / ref, ref
+
+        fsens_T_norm, ref_T = _norm(fsens_T)
+        if fsens_P is not None:
+            fsens_P_norm, ref_P = _norm(fsens_P)
+
+        # Chain-rule gradients (OpenFOAM fsens convention: field = -dJ/dgamma)
+        grad_meanT_ctrl = chain_rule_gradient(
+            -fsens_T_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W)
+        grad_meanT = grad_meanT_ctrl.ravel()
+
+        if fsens_P is not None:
+            grad_dissPower_ctrl = chain_rule_gradient(
+                -fsens_P_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W)
+            grad_dissPower = grad_dissPower_ctrl.ravel()
+        else:
+            grad_dissPower_ctrl = np.zeros_like(grad_meanT_ctrl)
+            grad_dissPower = np.zeros_like(grad_meanT)
+
+        if self.mode == 'pressure':
+            J_obj     = dissPower
+            grad_obj  = grad_dissPower
+        else:
+            J_obj     = meanT - self.Texterior
+            grad_obj  = grad_meanT
+
+        # Overhang: raw g_oh and its gradient (no penalty scaling)
+        g_oh = 0.0
+        grad_g_oh = np.zeros(self.n_ctrl * 3)
+        am_info: dict = {}
+        if self.am is not None and self.am.use_overhang:
+            g_oh, grad_g_oh_ctrl, am_info = compute_gyroid_overhang_raw(
+                self.cell_centers_mm, freq_mm, gamma, sdf,
+                self.epsilon, self.am.cos_max, self.am.b_vec, self.W,
+            )
+            grad_g_oh = grad_g_oh_ctrl.ravel()
+
+        vol_use    = 1.0 - gamma.mean()
+        solid_mass = self.solid_density_g_per_mm3 * self._v_cell_mm3 * float(np.sum(1.0 - gamma))
+        elapsed    = time.time() - t0
+
+        print(f"\n  meanT={meanT:.6g} K  dissPower={dissPower:.6g}  "
+              f"vol={vol_use:.4f}  elapsed={elapsed:.1f}s")
+        if self.mode == 'pressure' and self.meantT_max is not None:
+            print(f"  meanT constraint: {meanT:.4g} ≤ {self.meantT_max:.4g}  "
+                  f"(slack={self.meantT_max - meanT:.4g})")
+        elif self.mode == 'heat' and self.dissPower_max is not None:
+            print(f"  dissPower constraint: {dissPower:.4g} ≤ {self.dissPower_max:.4g}  "
+                  f"(slack={self.dissPower_max - dissPower:.4g})")
+        if self.am is not None and self.am.use_overhang:
+            print(f"  g_oh={g_oh:.4g}  (limit P_bar={self.am.P_bar:.4g}  "
+                  f"slack={self.am.P_bar - g_oh:.4g})")
+
+        delta_x_norm = (float(np.linalg.norm(x - self._x_prev))
+                        if self._x_prev is not None else float('nan'))
+        self._x_prev = x.copy()
+
+        self._history.append(dict(
+            iter=eval_iter,
+            J=meanT - self.Texterior, J_aug=J_obj, J_obj=J_obj,
+            dissPower=dissPower, vol=vol_use,
+            solid_mass=solid_mass, flow_rate=massflow, deltaP=deltaP, outletT=outletT,
+            mode=self.mode,
+            wall_thickness=self.wall_thickness,
+            g_oh=am_info.get('g_oh', 0.0),
+            pen_oh=0.0,
+            g_meanT=meanT if self.mode == 'pressure' else float('nan'),
+            pen_meanT=0.0,
+            g_disspower=dissPower if self.mode == 'heat' else float('nan'),
+            pen_disspower=0.0,
+            mu_adaptive=float('nan'),
+            mu_oh=float('nan'),
+            grad_norm=float(np.linalg.norm(grad_obj)),
+            delta_x=delta_x_norm, elapsed=elapsed,
+            alphaMax=alphaMax,
+        ))
+        self._save_history()
+        self.save_ctrl_pts(x, tag='_checkpoint')
+        if J_obj < self._best_J_aug:
+            self._best_J_aug = J_obj
+            self._best_x = x.copy()
+            self.save_ctrl_pts(x, tag='_best')
+            print(f"  *** New best J_obj = {J_obj:.6g} — saved to _best ***")
+
+        result = dict(
+            J_obj=J_obj,
+            grad_obj=grad_obj,
+            meanT=meanT,
+            grad_meanT=grad_meanT,
+            dissPower=dissPower,
+            grad_dissPower=grad_dissPower,
+            g_oh=g_oh,
+            grad_g_oh=grad_g_oh,
+        )
+        self._tc_cache_key = key
+        self._tc_cache = result
+        return result
+
+    def _run_trust_constr(self, x_init: np.ndarray, n_iters: int) -> np.ndarray:
+        """
+        scipy trust-constr with proper inequality constraints (no penalty terms).
+
+        In pressure mode the meanT ≤ meantT_max bound is a hard NonlinearConstraint.
+        In heat mode the dissPower ≤ dissPower_max bound is a hard NonlinearConstraint.
+        The AM overhang g_oh ≤ P_bar is always a hard NonlinearConstraint when enabled.
+
+        All gradients are computed analytically from the adjoint sensitivity fields
+        and shared via a single-entry cache so each OpenFOAM run serves the objective
+        function, its Jacobian, every constraint function, and every constraint Jacobian.
+        """
+        from scipy.optimize import NonlinearConstraint, Bounds
+
+        # Reset per-run cache
+        self._tc_cache_key = None
+        self._tc_cache = None
+
+        def obj(x: np.ndarray) -> float:
+            return self._simulate_for_tc(x)['J_obj']
+
+        def obj_jac(x: np.ndarray) -> np.ndarray:
+            return self._simulate_for_tc(x)['grad_obj']
+
+        constraints: list = []
+
+        # ── Physical constraints (enforced without penalty) ─────────────────
+        if self.mode == 'pressure' and self.meantT_max is not None:
+            T_max = float(self.meantT_max)
+
+            def con_meanT(x: np.ndarray) -> float:
+                return T_max - self._simulate_for_tc(x)['meanT']
+
+            def con_meanT_jac(x: np.ndarray) -> np.ndarray:
+                return -self._simulate_for_tc(x)['grad_meanT']
+
+            constraints.append(NonlinearConstraint(
+                con_meanT, 0.0, np.inf, jac=con_meanT_jac,
+            ))
+
+        elif self.mode == 'heat' and self.dissPower_max is not None:
+            P_max = float(self.dissPower_max)
+
+            def con_disspower(x: np.ndarray) -> float:
+                return P_max - self._simulate_for_tc(x)['dissPower']
+
+            def con_disspower_jac(x: np.ndarray) -> np.ndarray:
+                return -self._simulate_for_tc(x)['grad_dissPower']
+
+            constraints.append(NonlinearConstraint(
+                con_disspower, 0.0, np.inf, jac=con_disspower_jac,
+            ))
+
+        # ── Overhang constraint ─────────────────────────────────────────────
+        if self.am is not None and self.am.use_overhang:
+            P_bar = float(self.am.P_bar)
+
+            def con_overhang(x: np.ndarray) -> float:
+                return P_bar - self._simulate_for_tc(x)['g_oh']
+
+            def con_overhang_jac(x: np.ndarray) -> np.ndarray:
+                return -self._simulate_for_tc(x)['grad_g_oh']
+
+            constraints.append(NonlinearConstraint(
+                con_overhang, 0.0, np.inf, jac=con_overhang_jac,
+            ))
+
+        bounds = Bounds(
+            lb=np.full(self.n_ctrl * 3, -self.k_amp_bound),
+            ub=np.full(self.n_ctrl * 3,  self.k_amp_bound),
+        )
+
+        def callback(xk: np.ndarray, state: object = None) -> None:
+            pass  # _accepted_iter is already incremented inside _simulate_for_tc
+
+        n_constraints = len(constraints)
+        print(f"\nStarting trust-constr optimisation  "
+              f"({n_iters} max evaluations, {n_constraints} constraint(s))\n")
+
+        result = minimize(
+            obj, x_init,
+            method='trust-constr',
+            jac=obj_jac,
+            constraints=constraints,
+            bounds=bounds,
+            callback=callback,
+            options=dict(maxiter=n_iters, verbose=2, gtol=1e-8),
+        )
+
+        print(f"\nTrust-constr finished: {result.message}")
+        print(f"  Final J_obj = {result.fun:.6g}   nit = {result.nit}   "
+              f"nfev = {result.nfev}")
+        return result.x
+
     # ── public entry point ────────────────────────────────────────────────────
 
     def run(
@@ -1459,7 +1709,8 @@ class GyroidRBFOptimizer:
         n_iters     : maximum number of outer iterations
         x0          : initial flat design vector (defaults to zero, i.e. uniform gyroid)
         load_ctrl   : path to a previous gyroid_ctrl_pts.txt to warm-start
-        method      : 'L-BFGS-B' (default) or 'MMA'
+        method      : 'L-BFGS-B' (penalty-based, default), 'MMA', or
+                      'trust-constr' (proper constraint enforcement via SQP)
         iter_offset : add this value to every logged iteration number; also
                       causes the existing history file to be read and prepended
                       so the new rows append seamlessly to the old ones.
@@ -1494,7 +1745,9 @@ class GyroidRBFOptimizer:
 
         if method == 'MMA':
             x_opt = self._run_mma(x_init, n_iters)
-        else:
+        elif method == 'trust-constr':
+            x_opt = self._run_trust_constr(x_init, n_iters)
+        else:  # L-BFGS-B (default, penalty-based)
             result = minimize(
                 self.objective_and_gradient,
                 x_init,
@@ -1694,8 +1947,10 @@ def main() -> None:
                         help='Upper bound on DissPower (constraint, only used in heat mode)')
     parser.add_argument('--mu-penalty', type=float, default=100.0,
                         help='Initial penalty multiplier for constraints (default: 100.0)')
-    parser.add_argument('--method', choices=['L-BFGS-B', 'MMA'], default='L-BFGS-B',
-                        help="Optimization algorithm: 'L-BFGS-B' (default) or 'MMA'")
+    parser.add_argument('--method', choices=['L-BFGS-B', 'MMA', 'trust-constr'],
+                        default='L-BFGS-B',
+                        help="Optimization algorithm: 'L-BFGS-B' (default, penalty-based), "
+                             "'MMA', or 'trust-constr' (proper constraint enforcement)")
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent

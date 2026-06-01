@@ -27,7 +27,7 @@ run:
 
   # Maximum number of outer optimizer iterations.
   # Increase for a longer optimization run; decrease for a quick test.
-  iters: 600
+  iters: 1500
 
   
 
@@ -164,7 +164,7 @@ material:
   # where L is the geometric mean of the two transverse (perpendicular-to-flow) dimensions.
   # Set to 0.0 to disable and use the direct alpha_max value instead.
   # This relationship is computed once during case preparation and written as alphaMax.
-  darcy_number: 1.6e-8
+  darcy_number: 0.3e-8
 
   # Fluid density in kg/m³ (for future use; currently informational only).
   # This does not affect the current incompressible solver equations.
@@ -203,6 +203,14 @@ turbulence:
 
 optimization:
 
+  # Optimization algorithm.
+  # L-BFGS-B: quasi-Newton with penalty terms for constraints (default).
+  # MMA: Method of Moving Asymptotes (Svanberg), penalty-based.
+  # trust-constr: SQP interior-point with proper inequality constraint enforcement.
+  #   In pressure mode: meanT ≤ meantT_max is a hard constraint (no penalty weight needed).
+  #   In heat mode: dissPower ≤ dissPower_max is a hard constraint.
+  #   AM overhang g_oh ≤ am_P_bar is always a hard constraint when no_overhang is false.
+  #   With trust-constr, mu_penalty and mu_overhang are ignored.
   method: MMA
 
 
@@ -214,7 +222,7 @@ optimization:
   # The G-threshold is computed as: 0.5 × wall × k_base × √3
   # (√3 is the maximum |∇G|/k on the gyroid surface, reached at triple points).
   # Walls away from triple points will be thicker than this value.
-  wall: 0.041
+  wall: 0.11
 
   # Smooth-Heaviside sharpness in mm.
   # Smaller values make the gamma transition sharper; larger values make it smoother. See the paper pdf.

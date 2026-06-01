@@ -15,9 +15,9 @@
     int opt1(readScalar(transportProperties.lookup("opt1")));
     int opt2(readScalar(transportProperties.lookup("opt2")));
    alphaMax.value() *= Foam::pow(5, opt1-1);
-   alphaMax.value()=Foam::min(alphaMax.value(),5e6);//1e6,1e7 TODO: fix min Alphamax
+   alphaMax.value()=alphaMax.value();//1e6,1e7 TODO: fix min Alphamax
    alphamax.value() *= Foam::pow(5, opt1-1);
-   alphamax.value()=Foam::min(alphamax.value(),5e6);//1e6,1e7
+   alphamax.value()=alphaMax.value();//1e6,1e7
    Info<< "alphaMax: recalc " << alphaMax.value() << endl;
    std::ofstream outfileam("alphaMax.txt",std::ios::app);
    outfileam<<alphaMax.value()<<"\n";

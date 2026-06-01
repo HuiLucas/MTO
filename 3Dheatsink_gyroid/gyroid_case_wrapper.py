@@ -1086,8 +1086,9 @@ def main() -> None:
     parser.add_argument('--skip-clean', action='store_true', help='Skip the cleanup step before preparing the case')
     parser.add_argument('--iters', type=int, default=None, help='Override the iteration count from the config')
     parser.add_argument('--load-ctrl', default=None, metavar='FILE', help='Warm-start from a previous gyroid_ctrl_pts_*.txt file')
-    parser.add_argument('--method', choices=['L-BFGS-B', 'MMA'], default=None,
-                        help="Override optimization algorithm: 'L-BFGS-B' (default) or 'MMA'")
+    parser.add_argument('--method', choices=['L-BFGS-B', 'MMA', 'trust-constr'], default=None,
+                        help="Override optimization algorithm: 'L-BFGS-B' (default, penalty-based), "
+                             "'MMA', or 'trust-constr' (proper constraint enforcement via SQP)")
     parser.add_argument('--restart', action='store_true',
                         help='Continue from the latest checkpoint in the case directory. '
                              'Skips case cleaning and re-meshing so all existing run files '

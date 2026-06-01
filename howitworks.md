@@ -36,6 +36,7 @@ Read the yaml file to choose the correct inputs
 ## TODO:
 - Truly parallelize
 - Fix scale
+- No holes in gamma field: voxel size smaller than wall thickness? Epsilon in heaviside function decreases during optimization?
 - Reduce conductivity such that temperature is less homogeneous through heat exchanger and the geometry actually influences oulet temperature
 - Better optimizer that actually performs more iterations in comparison to evaluations.
 - Create opt3 that controls Heaviside thickness
