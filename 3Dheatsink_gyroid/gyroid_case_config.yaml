@@ -27,7 +27,7 @@ run:
 
   # Maximum number of outer optimizer iterations.
   # Increase for a longer optimization run; decrease for a quick test.
-  iters: 1500
+  iters: 150
 
   
 
@@ -275,7 +275,7 @@ optimization:
   build_direction: [1, 1, 1]
 
   # Disable the overhang constraint entirely when true.
-  no_overhang: false
+  no_overhang: true
 
   # ── Pareto-front exploration ────────────────────────────────────────────────
   # When pareto.enabled is true the wrapper runs ParetoExplorer instead of a

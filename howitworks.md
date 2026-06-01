@@ -35,6 +35,7 @@ Read the yaml file to choose the correct inputs
 
 ## TODO:
 - Truly parallelize
+- Initialize using gyroid with holes in straight line from entrance to exit. Step 2: make it possible for this line to go around corners if the geometry is complex
 - Fix scale
 - No holes in gamma field: voxel size smaller than wall thickness? Epsilon in heaviside function decreases during optimization?
 - Reduce conductivity such that temperature is less homogeneous through heat exchanger and the geometry actually influences oulet temperature
