@@ -133,6 +133,47 @@ class OptimizationSettings:
     pareto_warmstart: bool
     method: str
     build_direction: object | None
+    am_align_build_to_flow: bool
+
+
+def _compute_flow_unit_vector(
+    geometry: BoxGeometry,
+    inlet: InletSettings,
+    outlet: OutletSettings,
+) -> tuple[float, float, float]:
+    """Return the unit vector from the inlet window origin to the outlet window origin.
+
+    The inlet and outlet window_origin_mm are 2D coordinates local to their
+    respective faces.  This function converts them to absolute 3D positions
+    and returns the normalised direction vector.
+    """
+    axis_names = ('x', 'y', 'z')
+    flow_idx = _axis_index(geometry.flow_axis)
+    transverse_axes = [name for name in axis_names if name != geometry.flow_axis]
+
+    inlet_pos  = list(geometry.origin_mm)
+    outlet_pos = list(geometry.origin_mm)
+
+    inlet_pos[flow_idx] = (geometry.origin_mm[flow_idx]
+                           if inlet.face == 'min'
+                           else geometry.origin_mm[flow_idx] + geometry.size_mm[flow_idx])
+    outlet_pos[flow_idx] = (geometry.origin_mm[flow_idx]
+                            if outlet.face == 'min'
+                            else geometry.origin_mm[flow_idx] + geometry.size_mm[flow_idx])
+
+    for local_idx, axis_name in enumerate(transverse_axes):
+        ax_idx = _axis_index(axis_name)
+        inlet_pos[ax_idx]  = geometry.origin_mm[ax_idx] + inlet.window_origin_mm[local_idx]
+        outlet_pos[ax_idx] = geometry.origin_mm[ax_idx] + outlet.window_origin_mm[local_idx]
+
+    direction = np.array(outlet_pos, dtype=float) - np.array(inlet_pos, dtype=float)
+    norm = float(np.linalg.norm(direction))
+    if norm < 1e-10:
+        raise ValueError(
+            "Inlet and outlet window origins are the same 3-D point; "
+            "cannot determine a gyroid rotation direction."
+        )
+    return tuple(direction / norm)
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -368,6 +409,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         pareto_warmstart=bool(optimization_cfg.get('pareto_warmstart', True)),
         method=str(optimization_cfg.get('method', 'L-BFGS-B')),
         build_direction=_parse_build_direction(optimization_cfg.get('build_direction', 'z')),
+        am_align_build_to_flow=bool(optimization_cfg.get('am_align_build_to_flow', False)),
     )
 
     run = RunSettings(
@@ -1034,8 +1076,10 @@ def prepare_case(case_dir: Path, geometry: BoxGeometry, inlet: InletSettings, ou
     write_turbulence_properties(case_dir / 'constant', turbulence)
 
 
-def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, optimisation: OptimizationSettings,
+def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings,
+                    optimisation: OptimizationSettings,
                     material: MaterialProperties,
+                    inlet: InletSettings, outlet: OutletSettings,
                     mu_penalty_override: float | None = None,
                     mu_overhang_override: float | None = None) -> GyroidRBFOptimizer:
     ox, oy, oz = geometry.origin_mm
@@ -1044,33 +1088,46 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings, opt
     opt_max = np.array([ox + sx, oy + sy, oz + sz], dtype=float)
     func_callback = lambda optvar : write_transport_properties(case_dir / 'constant', material, opt1=optvar[0], opt2=optvar[1])
     print(f"Run parallel: {run.parallel}, optimizer will use {max(1, run.parallel)} cores")
+
+    # Gyroid rotation: always derived from the inlet→outlet direction
+    gyroid_rot_vec = _compute_flow_unit_vector(geometry, inlet, outlet)
+    print(f"Flow unit vector (gyroid rotation): "
+          f"({gyroid_rot_vec[0]:.4f}, {gyroid_rot_vec[1]:.4f}, {gyroid_rot_vec[2]:.4f})")
+
+    # Optionally override the AM build direction with the same flow vector
+    build_dir = optimisation.build_direction
+    if optimisation.am_align_build_to_flow:
+        build_dir = np.array(gyroid_rot_vec, dtype=float)
+        print(f"AM build direction overridden to flow vector: {build_dir}")
+
     return GyroidRBFOptimizer(
         case_dir=case_dir,
-            k_base=2.0 * math.pi / optimisation.unit,
-            wall_thickness=optimisation.wall,
-            epsilon=optimisation.epsilon,
-            control_spacing=optimisation.spacing,
-            k_amp_bound=optimisation.kbound,
-            bake_spacing=optimisation.bake_spacing,
-            solver=run.solver,
-            n_procs=run.parallel,
-            of_binary=run.postprocess,
+        k_base=2.0 * math.pi / optimisation.unit,
+        wall_thickness=optimisation.wall,
+        epsilon=optimisation.epsilon,
+        control_spacing=optimisation.spacing,
+        k_amp_bound=optimisation.kbound,
+        bake_spacing=optimisation.bake_spacing,
+        solver=run.solver,
+        n_procs=run.parallel,
+        of_binary=run.postprocess,
         opt_bounds_min=opt_min,
         opt_bounds_max=opt_max,
-            am_theta_max=math.radians(optimisation.am_theta),
-            am_P_bar=optimisation.am_P_bar,
-            am_mu_overhang=mu_overhang_override if mu_overhang_override is not None else optimisation.mu_overhang,
-            use_overhang=not optimisation.no_overhang,
-            am_build_direction=optimisation.build_direction,
-            mode='pareto' if optimisation.pareto_enabled else optimisation.mode,
-            target_meanT=optimisation.meantT_max,
-            target_disspower=optimisation.dissPower_max,
-            mu_mass=mu_penalty_override if mu_penalty_override is not None else optimisation.mu_penalty,
-            solid_density_g_per_mm3=material.solid_density_g_per_mm3,
-            func_callback=func_callback,
-            opt1 = 1,
-            opt2 = 1,
-            Texterior=material.Texterior,
+        am_theta_max=math.radians(optimisation.am_theta),
+        am_P_bar=optimisation.am_P_bar,
+        am_mu_overhang=mu_overhang_override if mu_overhang_override is not None else optimisation.mu_overhang,
+        use_overhang=not optimisation.no_overhang,
+        am_build_direction=build_dir,
+        mode='pareto' if optimisation.pareto_enabled else optimisation.mode,
+        target_meanT=optimisation.meantT_max,
+        target_disspower=optimisation.dissPower_max,
+        mu_mass=mu_penalty_override if mu_penalty_override is not None else optimisation.mu_penalty,
+        solid_density_g_per_mm3=material.solid_density_g_per_mm3,
+        func_callback=func_callback,
+        opt1=1,
+        opt2=1,
+        Texterior=material.Texterior,
+        gyroid_rot_vec=gyroid_rot_vec,
     )
 
 
@@ -1176,6 +1233,7 @@ def main() -> None:
         load_ctrl = Path(args.load_ctrl).resolve() if args.load_ctrl else None
 
     optimiser = build_optimizer(case_dir, geometry, run, optimisation, props,
+                                inlet, outlet,
                                 mu_penalty_override=restart_mu_penalty,
                                 mu_overhang_override=restart_mu_overhang)
 

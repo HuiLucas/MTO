@@ -7,6 +7,9 @@ dependencies:
   - pip
   - setuptools
   - wheel
+  - grpcio>=1.60.0
+  - grpcio-tools>=1.60.0
+  - PyYAML>=6.0
 
   # ---- Python / Jupyter ----
   - ipython

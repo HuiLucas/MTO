@@ -40,6 +40,25 @@ from scipy.interpolate import RBFInterpolator
 from skimage.measure import marching_cubes
 
 
+# ── Gyroid rotation (mirrors am_constraints.gyroid_rotation_matrix) ───────────
+
+def _gyroid_rotation_matrix(a: np.ndarray) -> np.ndarray:
+    """Rotation matrix mapping the x-axis to unit vector a (see am_constraints)."""
+    a = np.asarray(a, dtype=float)
+    a = a / np.linalg.norm(a)
+    a0, a1, a2 = float(a[0]), float(a[1]), float(a[2])
+    D = a1**2 + a2**2
+    if D < 1e-10:
+        if a0 >= 0.0:
+            return np.eye(3)
+        return np.array([[-1., 0., 0.], [0., -1., 0.], [0., 0., 1.]])
+    return np.array([
+        [a0,  a1,                    a2],
+        [-a1, (a0*a1**2 + a2**2)/D,  (a0 - 1.0)*a1*a2/D],
+        [-a2, (a0 - 1.0)*a1*a2/D,   (a0*a2**2 + a1**2)/D],
+    ])
+
+
 # ── RBF field (same thin-plate-spline as the optimizer) ───────────────────────
 
 class _BakedRBF:
@@ -97,16 +116,32 @@ class _BakedRBF:
 # ── Gyroid scalar field ────────────────────────────────────────────────────────
 
 def gyroid_G(pts_mm: np.ndarray, k_base: float,
-             rbf_field: _BakedRBF | None) -> np.ndarray:
+             rbf_field: _BakedRBF | None,
+             rot_matrix: np.ndarray | None = None) -> np.ndarray:
     """
     Evaluate G at every point in pts_mm (N,3).
-    If rbf_field is None, uses uniform k_base everywhere.
+
+    Standard (rot_matrix is None):
+        G = sin(kx·x)cos(ky·y) + sin(ky·y)cos(kz·z) + sin(kz·z)cos(kx·x)
+
+    Rotated (rot_matrix = R):
+        [u,v,w] = R @ [kx·x, ky·y, kz·z]
+        G = cos(u)cos(v) + sin(v)cos(w) − sin(w)sin(u)
     """
     dk = rbf_field(pts_mm) if rbf_field is not None else np.zeros((len(pts_mm), 3))
     x  = pts_mm[:, 0]; y = pts_mm[:, 1]; z = pts_mm[:, 2]
     kx = k_base + dk[:, 0]
     ky = k_base + dk[:, 1]
     kz = k_base + dk[:, 2]
+
+    if rot_matrix is not None:
+        R = rot_matrix
+        p = kx*x; q = ky*y; r = kz*z
+        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
+        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
+        w = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
+        return np.cos(u)*np.cos(v) + np.sin(v)*np.cos(w) - np.sin(w)*np.sin(u)
+
     return (np.sin(kx * x) * np.cos(ky * y)
           + np.sin(ky * y) * np.cos(kz * z)
           + np.sin(kz * z) * np.cos(kx * x))
@@ -115,7 +150,8 @@ def gyroid_G(pts_mm: np.ndarray, k_base: float,
 def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
                      k_base: float, half_thickness: float,
                      rbf_field: _BakedRBF | None,
-                     batch: int = 500_000) -> np.ndarray:
+                     batch: int = 500_000,
+                     rot_matrix: np.ndarray | None = None) -> np.ndarray:
     """
     Build the scalar volume  f = |G| - half_thickness  over the grid defined
     by 1-D arrays xv, yv, zv (all in mm).  Returns shape (Nx, Ny, Nz) float32.
@@ -129,7 +165,7 @@ def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
     G   = np.empty(N, dtype=np.float32)
     for i in range(0, N, batch):
         sl = pts[i:i + batch]
-        G[i:i + batch] = gyroid_G(sl, k_base, rbf_field).astype(np.float32)
+        G[i:i + batch] = gyroid_G(sl, k_base, rbf_field, rot_matrix).astype(np.float32)
         if (i // batch) % 20 == 0 and i > 0:
             print(f"  Evaluating G … {i:,}/{N:,}  ({100*i/N:.0f}%)", end='\r')
 
@@ -290,7 +326,7 @@ def simplify_mesh_in_memory(verts: np.ndarray, faces: np.ndarray,
 # ── YAML config reader (optional) ────────────────────────────────────────────
 
 def read_yaml_params(yaml_path: Path) -> dict:
-    """Minimal YAML parser for the gyroid_case_config.yaml – no PyYAML required."""
+    """Read gyroid_case_config.yaml for STL export parameters."""
     params = {}
     try:
         import yaml
@@ -301,14 +337,48 @@ def read_yaml_params(yaml_path: Path) -> dict:
         params['wall']   = float(opt.get('wall', 0.30))
         params['kbound'] = float(opt.get('kbound', 2.0))
         geo = cfg.get('geometry', {})
-        size = geo.get('size_mm', [4.0, 2.5, 10.0])
-        params['xmax'] = float(size[0])
-        params['ymax'] = float(size[1])
-        params['zmax'] = float(size[2])
+        origin = geo.get('origin_mm', [0.0, 0.0, 0.0])
+        size   = geo.get('size_mm',   [4.0, 2.5, 10.0])
+        params['xmin'] = float(origin[0])
+        params['ymin'] = float(origin[1])
+        params['zmin'] = float(origin[2])
+        params['xmax'] = float(origin[0]) + float(size[0])
+        params['ymax'] = float(origin[1]) + float(size[1])
+        params['zmax'] = float(origin[2]) + float(size[2])
         params['encap_wall_mm']    = float(geo.get('encap_wall_mm', 0.0))
         params['encap_open_faces'] = list(geo.get('encap_open_faces', ['zmin', 'zmax']))
+
+        # Compute gyroid rotation vector from inlet→outlet flow direction
+        flow_axis = str(geo.get('flow_axis', 'z')).lower()
+        axis_map  = {'x': 0, 'y': 1, 'z': 2}
+        flow_idx  = axis_map.get(flow_axis, 2)
+        transverse = [i for i in range(3) if i != flow_idx]
+
+        inlet_cfg  = cfg.get('inlet',  {})
+        outlet_cfg = cfg.get('outlet', {})
+        inlet_face  = str(inlet_cfg.get('face',  'min')).lower()
+        outlet_face = str(outlet_cfg.get('face', 'max')).lower()
+        inlet_orig_2d  = inlet_cfg.get('window_origin_mm',  [0.0, 0.0])
+        outlet_orig_2d = outlet_cfg.get('window_origin_mm', [0.0, 0.0])
+
+        inlet_3d  = list(origin)
+        outlet_3d = list(origin)
+        inlet_3d[flow_idx]  = float(origin[flow_idx]) if inlet_face  == 'min' else float(origin[flow_idx]) + float(size[flow_idx])
+        outlet_3d[flow_idx] = float(origin[flow_idx]) if outlet_face == 'min' else float(origin[flow_idx]) + float(size[flow_idx])
+        for local_i, ax_i in enumerate(transverse):
+            inlet_3d[ax_i]  = float(origin[ax_i]) + float(inlet_orig_2d[local_i])
+            outlet_3d[ax_i] = float(origin[ax_i]) + float(outlet_orig_2d[local_i])
+
+        import numpy as _np
+        direction = _np.array(outlet_3d, dtype=float) - _np.array(inlet_3d, dtype=float)
+        norm = float(_np.linalg.norm(direction))
+        if norm > 1e-10:
+            params['gyroid_rot_vec'] = (direction / norm).tolist()
+        else:
+            params['gyroid_rot_vec'] = None
+
     except ImportError:
-        # Fallback: naive line-by-line parse for the three keys we need
+        # Fallback: naive line-by-line parse
         text = yaml_path.read_text()
         for line in text.splitlines():
             line = line.strip()
@@ -332,7 +402,8 @@ def main() -> None:
                     ymin=0.0, ymax=2.5,
                     zmin=0.0, zmax=10.0,
                     encap_wall_mm=0.0,
-                    encap_open_faces=['zmin', 'zmax'])
+                    encap_open_faces=['zmin', 'zmax'],
+                    gyroid_rot_vec=None)
 
     # Pre-scan for --config so we can load it before argparse finalises defaults
     pre = argparse.ArgumentParser(add_help=False)
@@ -457,8 +528,16 @@ def main() -> None:
         print(f"  WARNING: {ctrl_path} not found – using uniform gyroid (dk = 0)")
 
     # ── Evaluate |G| - half_thickness over the voxel grid ─────────────────────
+    # ── Build gyroid rotation matrix ───────────────────────────────────────────
+    rot_matrix = None
+    rot_vec = defaults.get('gyroid_rot_vec')
+    if rot_vec is not None:
+        rot_matrix = _gyroid_rotation_matrix(np.array(rot_vec, dtype=float))
+        print(f"  Gyroid rot : flow vector = ({rot_vec[0]:.4f}, {rot_vec[1]:.4f}, {rot_vec[2]:.4f})")
+        print(f"               (rotated+pi/2-shifted formula)")
+
     print(f"\n  Computing |G| - half_thickness …")
-    sdf = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field)
+    sdf = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field, rot_matrix=rot_matrix)
     print(f"  SDF range: [{sdf.min():.4g}, {sdf.max():.4g}]"
           f"   solid_frac ≈ {(sdf < 0).mean():.3f}")
 

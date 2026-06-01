@@ -57,7 +57,8 @@ from scipy.interpolate import RBFInterpolator
 from scipy.optimize import minimize
 from scipy.special import expit  # numerically stable sigmoid
 
-from am_constraints import AMConstraints, compute_gyroid_overhang, compute_gyroid_overhang_raw
+from am_constraints import (AMConstraints, compute_gyroid_overhang, compute_gyroid_overhang_raw,
+                            gyroid_rotation_matrix)
 
 # ── Physical / geometry parameters ─────────────────────────────────────────────
 # blockMeshDict uses convertToMeters 0.01  →  mesh coords in metres
@@ -388,29 +389,35 @@ def build_freq_field(ctrl_pts_mm: np.ndarray,
 
 def gyroid_sdf_batch(pts_mm:         np.ndarray,
                      freq_mm:         np.ndarray,
-                     half_thickness:  float) -> np.ndarray:
+                     half_thickness:  float,
+                     rot_matrix:      np.ndarray | None = None) -> np.ndarray:
     """
     Vectorised Gyroid SDF at an array of points.
 
-    G(x,y,z) = sin(kx*x)*cos(ky*y)
-              + sin(ky*y)*cos(kz*z)
-              + sin(kz*z)*cos(kx*x)
-    SDF = |G| - half_thickness
+    Standard (rot_matrix is None):
+        G = sin(kx·x)cos(ky·y) + sin(ky·y)cos(kz·z) + sin(kz·z)cos(kx·x)
 
-    SDF < 0  →  inside solid wall  →  gamma = 0
-    SDF > 0  →  fluid channel      →  gamma = 1
+    Rotated / flow-aligned (rot_matrix = R):
+        [u,v,w] = R @ [kx·x, ky·y, kz·z]
+        G = cos(u)cos(v) + sin(v)cos(w) − sin(w)sin(u)
+        (pi/2 phase-shifted standard gyroid, rotated so channels align with flow)
 
-    Parameters
-    ----------
-    pts_mm        : (N, 3) cell-centre positions (mm)
-    freq_mm       : (N, 3) spatially-varying frequencies [kx, ky, kz] (rad/mm)
-    half_thickness: 0.5 * wall_thickness (mm)
+    SDF = |G| − half_thickness
     """
     x  = pts_mm[:, 0];  y  = pts_mm[:, 1];  z  = pts_mm[:, 2]
     kx = freq_mm[:, 0]; ky = freq_mm[:, 1]; kz = freq_mm[:, 2]
-    G  = (np.sin(kx*x) * np.cos(ky*y)
-        + np.sin(ky*y) * np.cos(kz*z)
-        + np.sin(kz*z) * np.cos(kx*x))
+
+    if rot_matrix is not None:
+        R = rot_matrix
+        p = kx*x; q = ky*y; r = kz*z
+        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
+        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
+        w = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
+        G = np.cos(u)*np.cos(v) + np.sin(v)*np.cos(w) - np.sin(w)*np.sin(u)
+    else:
+        G = (np.sin(kx*x) * np.cos(ky*y)
+           + np.sin(ky*y) * np.cos(kz*z)
+           + np.sin(kz*z) * np.cos(kx*x))
     return np.abs(G) - half_thickness
 
 
@@ -445,10 +452,17 @@ def build_rbf_jacobian(ctrl_pts_mm:     np.ndarray,
     print(f"  Building RBF Jacobian ({n_ctrl} ctrl pts × {n_cells:,} cells) …")
     W = np.empty((n_cells, n_ctrl), dtype=np.float64)
     I = np.eye(n_ctrl)
-    for l in range(n_ctrl):
-        rbf_l = RBFInterpolator(ctrl_pts_mm, I[:, l],
-                                kernel='thin_plate_spline', degree=1)
-        W[:, l] = rbf_l(cell_centers_mm).ravel()
+    # for l in range(n_ctrl):
+    #     rbf_l = RBFInterpolator(ctrl_pts_mm, I[:, l],
+    #                             kernel='thin_plate_spline', degree=1)
+    #     W[:, l] = rbf_l(cell_centers_mm).ravel()
+    rbf = RBFInterpolator(
+        ctrl_pts_mm,
+        np.eye(n_ctrl),
+        kernel="thin_plate_spline",
+        degree=1
+    )
+    W = rbf(cell_centers_mm)
     print("  RBF Jacobian ready.")
     return W
 
@@ -462,36 +476,50 @@ def chain_rule_gradient(
     sdf:            np.ndarray,   # (N,)   Gyroid SDF values
     epsilon:        float,        # smooth-Heaviside sharpness
     W:              np.ndarray,   # (N, N_ctrl) RBF Jacobian
+    rot_matrix:     np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Compute dJ/d(dk_ctrl) via the full chain rule:
 
-        dJ/d(dk_{a,l}) = sum_j  fsens_j
-                               * d(gamma_j)/d(SDF_j)
-                               * d(SDF_j)/d(G_j)
-                               * d(G_j)/d(k_{a,j})
-                               * W[j, l]
+        dJ/d(dk_{a,l}) = Σ_j  fsens_j · dγ/dSDF_j · sign(G_j) · dG_j/dk_{a,j} · W[j,l]
 
-    where:
-        d(SDF)/d(G) = sign(G)
+    Supports both standard and rotated gyroid (see gyroid_sdf_batch).
 
-        d(G)/d(kx) = x * ( cos(kx*x)*cos(ky*y) - sin(kz*z)*sin(kx*x) )
-        d(G)/d(ky) = y * ( cos(ky*y)*cos(kz*z) - sin(kx*x)*sin(ky*y) )
-        d(G)/d(kz) = z * ( cos(kz*z)*cos(kx*x) - sin(ky*y)*sin(kz*z) )
+    For the rotated formula, [u,v,w] = R @ [kx·x, ky·y, kz·z]:
+        dG/dkx = x · (R[0,0]·∂G/∂u + R[1,0]·∂G/∂v + R[2,0]·∂G/∂w)
+        (and analogously for ky, kz)
 
-    Returns shape (N_ctrl, 3) – gradient w.r.t. (dk_x, dk_y, dk_z) of each ctrl pt.
+    Returns shape (N_ctrl, 3).
     """
     x  = pts_mm[:, 0];  y  = pts_mm[:, 1];  z  = pts_mm[:, 2]
     kx = freq_mm[:, 0]; ky = freq_mm[:, 1]; kz = freq_mm[:, 2]
 
-    G     = (np.sin(kx*x) * np.cos(ky*y)
-           + np.sin(ky*y) * np.cos(kz*z)
-           + np.sin(kz*z) * np.cos(kx*x))
-    signG = np.sign(G)
+    if rot_matrix is not None:
+        R = rot_matrix
+        p = kx*x; q = ky*y; r = kz*z
+        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
+        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
+        w = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
 
-    dG_dkx = x * (np.cos(kx*x)*np.cos(ky*y) - np.sin(kz*z)*np.sin(kx*x))
-    dG_dky = y * (np.cos(ky*y)*np.cos(kz*z) - np.sin(kx*x)*np.sin(ky*y))
-    dG_dkz = z * (np.cos(kz*z)*np.cos(kx*x) - np.sin(ky*y)*np.sin(kz*z))
+        G     = np.cos(u)*np.cos(v) + np.sin(v)*np.cos(w) - np.sin(w)*np.sin(u)
+        signG = np.sign(G)
+
+        dG_du = -np.sin(u)*np.cos(v) - np.sin(w)*np.cos(u)
+        dG_dv = -np.cos(u)*np.sin(v) + np.cos(v)*np.cos(w)
+        dG_dw = -np.sin(v)*np.sin(w) - np.cos(w)*np.sin(u)
+
+        # dG/dkα = coord · (R[:,col_α] · [dG_du, dG_dv, dG_dw])
+        dG_dkx = x * (R[0, 0]*dG_du + R[1, 0]*dG_dv + R[2, 0]*dG_dw)
+        dG_dky = y * (R[0, 1]*dG_du + R[1, 1]*dG_dv + R[2, 1]*dG_dw)
+        dG_dkz = z * (R[0, 2]*dG_du + R[1, 2]*dG_dv + R[2, 2]*dG_dw)
+    else:
+        G     = (np.sin(kx*x) * np.cos(ky*y)
+               + np.sin(ky*y) * np.cos(kz*z)
+               + np.sin(kz*z) * np.cos(kx*x))
+        signG = np.sign(G)
+        dG_dkx = x * (np.cos(kx*x)*np.cos(ky*y) - np.sin(kz*z)*np.sin(kx*x))
+        dG_dky = y * (np.cos(ky*y)*np.cos(kz*z) - np.sin(kx*x)*np.sin(ky*y))
+        dG_dkz = z * (np.cos(kz*z)*np.cos(kx*x) - np.sin(ky*y)*np.sin(kz*z))
 
     dgds = dgamma_dsdf_vals(sdf, epsilon)   # (N,)
 
@@ -499,11 +527,7 @@ def chain_rule_gradient(
     wy = fsens * dgds * signG * dG_dky
     wz = fsens * dgds * signG * dG_dkz
 
-    grad_kx = W.T @ wx                     # (N_ctrl,)
-    grad_ky = W.T @ wy
-    grad_kz = W.T @ wz
-
-    return np.stack([grad_kx, grad_ky, grad_kz], axis=1)  # (N_ctrl, 3)
+    return np.stack([W.T @ wx, W.T @ wy, W.T @ wz], axis=1)  # (N_ctrl, 3)
 
 
 # ── OpenFOAM runner ────────────────────────────────────────────────────────────
@@ -884,6 +908,7 @@ class GyroidRBFOptimizer:
         Texterior = 0.0,
         pareto_weight: float = 0.5,
         am_build_direction: np.ndarray | None = None,
+        gyroid_rot_vec: tuple | np.ndarray | None = None,
     ):
         self.case_dir       = case_dir
         self.k_base         = k_base
@@ -988,6 +1013,16 @@ class GyroidRBFOptimizer:
         # Penalise cells where k_eff² < k_base² (period > unit_size → isolated blobs).
         self.mu_kmin = mu_kmin
 
+        # ── Gyroid rotation matrix ────────────────────────────────────────────
+        if gyroid_rot_vec is not None:
+            rv = np.asarray(gyroid_rot_vec, dtype=float)
+            rv = rv / np.linalg.norm(rv)
+            self.rot_matrix = gyroid_rotation_matrix(rv)
+            print(f"Gyroid rotation: flow vector = ({rv[0]:.4f}, {rv[1]:.4f}, {rv[2]:.4f})")
+            print(f"  Rotation matrix R =\n{self.rot_matrix}")
+        else:
+            self.rot_matrix = None
+
         # ── AM constraints ────────────────────────────────────────────────────
         if use_overhang:
             self.am = AMConstraints(
@@ -1019,7 +1054,8 @@ class GyroidRBFOptimizer:
         field, _ = self._dk_to_field(x)
         dk_mm    = field.get_dk_batch(self.cell_centers_mm)       # (N, 3)
         freq_mm  = self.k_base + dk_mm                            # (N, 3) actual k_x,k_y,k_z
-        sdf      = gyroid_sdf_batch(self.cell_centers_mm, freq_mm, self.half_thickness)
+        sdf      = gyroid_sdf_batch(self.cell_centers_mm, freq_mm, self.half_thickness,
+                                    self.rot_matrix)
         gamma    = gamma_from_sdf(sdf, self.epsilon)
         return gamma, sdf, freq_mm
 
@@ -1238,7 +1274,7 @@ class GyroidRBFOptimizer:
             J_oh, grad_ctrl_oh, am_info = compute_gyroid_overhang(
                 self.cell_centers_mm, freq_mm, gamma, sdf,
                 self.epsilon, self.am.cos_max, self.am.b_vec,
-                self.am.mu_oh, self.W,
+                self.am.mu_oh, self.W, self.rot_matrix,
             )
             J_aug += J_oh
             print(f"  g_overhang = {am_info['g_oh']:.4g}  "
@@ -1250,7 +1286,8 @@ class GyroidRBFOptimizer:
         }
 
         grad_ctrl = chain_rule_gradient(
-            -fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W
+            -fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W,
+            self.rot_matrix,
         ) + grad_ctrl_oh           # (N_ctrl, 3)
         grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
 
@@ -1507,12 +1544,14 @@ class GyroidRBFOptimizer:
 
         # Chain-rule gradients (OpenFOAM fsens convention: field = -dJ/dgamma)
         grad_meanT_ctrl = chain_rule_gradient(
-            -fsens_T_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W)
+            -fsens_T_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W,
+            self.rot_matrix)
         grad_meanT = grad_meanT_ctrl.ravel()
 
         if fsens_P is not None:
             grad_dissPower_ctrl = chain_rule_gradient(
-                -fsens_P_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W)
+                -fsens_P_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W,
+                self.rot_matrix)
             grad_dissPower = grad_dissPower_ctrl.ravel()
         else:
             grad_dissPower_ctrl = np.zeros_like(grad_meanT_ctrl)
@@ -1532,7 +1571,7 @@ class GyroidRBFOptimizer:
         if self.am is not None and self.am.use_overhang:
             g_oh, grad_g_oh_ctrl, am_info = compute_gyroid_overhang_raw(
                 self.cell_centers_mm, freq_mm, gamma, sdf,
-                self.epsilon, self.am.cos_max, self.am.b_vec, self.W,
+                self.epsilon, self.am.cos_max, self.am.b_vec, self.W, self.rot_matrix,
             )
             grad_g_oh = grad_g_oh_ctrl.ravel()
 

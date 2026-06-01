@@ -1,0 +1,162 @@
+syntax = "proto3";
+
+package gyroid;
+
+// ─── Shared ──────────────────────────────────────────────────────────────────
+
+message Empty {}
+
+// ─── Configuration ───────────────────────────────────────────────────────────
+
+message ConfigResponse {
+  string yaml_content = 1;
+  bool   success      = 2;
+  string error        = 3;
+}
+
+// Replace the entire YAML config on disk.
+message SetConfigRequest {
+  string yaml_content = 1;
+}
+
+// Patch individual values using dot-notation keys (JSON encoded).
+// Example JSON: {"run.iters": 30, "optimization.mode": "heat"}
+// Note: comments in the YAML file will be lost on patch.
+message PatchConfigRequest {
+  string json_patch = 1;
+}
+
+message StatusResponse {
+  bool   success = 1;
+  string message = 2;
+}
+
+// ─── Run control ─────────────────────────────────────────────────────────────
+
+message StartRunRequest {
+  // Extra CLI flags forwarded verbatim to gyroid_case_wrapper.py.
+  // Example: ["--restart", "--iters", "40"]
+  repeated string extra_args = 1;
+}
+
+message RunStatusResponse {
+  enum State {
+    IDLE    = 0;
+    RUNNING = 1;
+    DONE    = 2;
+    ERROR   = 3;
+  }
+  State  state       = 1;
+  int32  pid         = 2;
+  string message     = 3;
+  int32  return_code = 4;
+}
+
+// ─── Output streaming ────────────────────────────────────────────────────────
+
+message OutputLine {
+  string line         = 1;
+  bool   is_stderr    = 2;
+  int64  timestamp_ms = 3;
+}
+
+// ─── Optimization history ────────────────────────────────────────────────────
+
+// One row from gyroid_opt_history.txt.
+// Numeric columns (and "nan") go into `values`; pure strings (e.g. "pressure")
+// go into `strings`.
+message HistoryRow {
+  map<string, double> values  = 1;
+  map<string, string> strings = 2;
+}
+
+message HistoryResponse {
+  bool             success = 1;
+  string           error   = 2;
+  repeated string  columns = 3;
+  repeated HistoryRow rows = 4;
+}
+
+message LatestMetricsResponse {
+  bool       available = 1;
+  HistoryRow latest    = 2;
+  string     error     = 3;
+}
+
+// ─── File access ─────────────────────────────────────────────────────────────
+
+// Path is relative to the `app/` directory. Empty path = the whole app dir.
+message ListFilesRequest {
+  string path = 1;
+}
+
+message FileListResponse {
+  repeated string paths = 1;
+  bool            success = 2;
+  string          error   = 3;
+}
+
+// Download a single file or a directory archive.
+message DownloadRequest {
+  // Relative path inside app/. Empty = whole app dir.
+  string path   = 1;
+  // When true (or when path points to a directory), the response is a
+  // gzip-compressed tar archive of the requested path.
+  bool   as_tar = 2;
+}
+
+message FileChunk {
+  bytes  data       = 1;
+  string filename   = 2;  // Base name of the file or archive
+  int64  total_size = 3;  // Total bytes of the full file/archive
+  bool   is_last    = 4;
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+service GyroidOptimizer {
+  // ── Config ─────────────────────────────────────────────────────────────────
+
+  // Return the current gyroid_case_config.yaml content.
+  rpc GetConfig (Empty) returns (ConfigResponse);
+
+  // Overwrite the entire config file.
+  rpc SetConfig (SetConfigRequest) returns (StatusResponse);
+
+  // Patch individual fields by dot-notation key (preserves unmentioned values
+  // but discards YAML comments).
+  rpc PatchConfig (PatchConfigRequest) returns (StatusResponse);
+
+  // ── Run control ────────────────────────────────────────────────────────────
+
+  // Start gyroid_case_wrapper.py (error if already running).
+  rpc StartRun (StartRunRequest) returns (StatusResponse);
+
+  // Send SIGTERM to the running process (SIGKILL after 10 s).
+  rpc StopRun (Empty) returns (StatusResponse);
+
+  // Query the current process state.
+  rpc GetRunStatus (Empty) returns (RunStatusResponse);
+
+  // ── Monitoring ─────────────────────────────────────────────────────────────
+
+  // Server-streaming: replay buffered output, then tail live output.
+  // Terminates when the run finishes or the client disconnects.
+  rpc StreamOutput (Empty) returns (stream OutputLine);
+
+  // ── Results ────────────────────────────────────────────────────────────────
+
+  // Return all rows of app/gyroid_opt_history.txt.
+  rpc GetHistory (Empty) returns (HistoryResponse);
+
+  // Return only the most-recent row of the history file.
+  rpc GetLatestMetrics (Empty) returns (LatestMetricsResponse);
+
+  // ── File access ────────────────────────────────────────────────────────────
+
+  // List files under app/ (or a subdirectory).
+  rpc ListFiles (ListFilesRequest) returns (FileListResponse);
+
+  // Stream a single file or a .tar.gz of a directory.
+  rpc DownloadFile (DownloadRequest) returns (stream FileChunk);
+}

@@ -122,6 +122,6 @@ RUN echo "source /opt/openfoam11/etc/bashrc" >> /etc/bash.bashrc
 
 USER vscode
 
-EXPOSE 8080
+EXPOSE 8080, 50051
 
 CMD ["/bin/bash"]
