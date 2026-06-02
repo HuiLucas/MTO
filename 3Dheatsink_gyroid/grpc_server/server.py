@@ -37,8 +37,16 @@ GRPC_DIR    = Path(__file__).resolve().parent
 BASE_DIR    = GRPC_DIR.parent                          # 3Dheatsink_gyroid/
 CONFIG_PATH = BASE_DIR / "gyroid_case_config.yaml"
 WRAPPER     = BASE_DIR / "gyroid_case_wrapper.py"
+STL_SCRIPT  = BASE_DIR / "gyroid_to_stl.py"
 APP_DIR     = BASE_DIR / "app"
 HISTORY     = APP_DIR  / "gyroid_opt_history.txt"
+
+# Named STL outputs produced by gyroid_to_stl.py (relative to BASE_DIR)
+_STL_FILES = {
+    "lattice": BASE_DIR / "gyroid_surface_lattice.stl",
+    "encap":   BASE_DIR / "gyroid_surface_encap.stl",
+    "surface": BASE_DIR / "gyroid_surface.stl",
+}
 
 CHUNK_SIZE  = 64 * 1024  # 64 KB per FileChunk
 
@@ -84,7 +92,8 @@ class RunnerState:
                     self._return_code = rc
             return self._return_code
 
-    def start(self, extra_args: list[str]) -> None:
+    def start(self, extra_args: list[str], script: Path = None,
+              use_raw_cmd: bool = False) -> None:
         with self._proc_lock:
             if self._proc is not None and self._proc.poll() is None:
                 raise RuntimeError("A run is already in progress")
@@ -93,7 +102,12 @@ class RunnerState:
                 self._history.clear()
                 self._reader_done = False
 
-            cmd = [sys.executable, str(WRAPPER)] + extra_args
+            if use_raw_cmd:
+                # extra_args is already a complete command list
+                cmd = extra_args
+            else:
+                target = script if script is not None else WRAPPER
+                cmd = [sys.executable, str(target)] + extra_args
             self._proc = subprocess.Popen(
                 cmd,
                 cwd=str(BASE_DIR),
@@ -182,7 +196,8 @@ class RunnerState:
                     q.put(None)   # signal end of stream
 
 
-_runner = RunnerState()
+_runner     = RunnerState()   # optimizer subprocess
+_stl_runner = RunnerState()   # gyroid_to_stl.py subprocess
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -384,6 +399,82 @@ class GyroidOptimizerServicer(pb2_grpc.GyroidOptimizerServicer):
                 yield from _stream_tar(target)
             else:
                 yield from _stream_file(target, target.name)
+        except Exception as exc:
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    # ── STL export ────────────────────────────────────────────────────────────
+
+    def StartStlExport(self, request, context):
+        try:
+            _stl_runner.start(list(request.extra_args), script=STL_SCRIPT)
+            return pb2.StatusResponse(success=True, message=f"STL export started (pid={_stl_runner.pid})")
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def StopStlExport(self, request, context):
+        try:
+            _stl_runner.stop()
+            return pb2.StatusResponse(success=True, message="STL export stop signal sent")
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def GetStlStatus(self, request, context):
+        rc  = _stl_runner.return_code
+        pid = _stl_runner.pid or 0
+        if _stl_runner.is_running:
+            state = pb2.RunStatusResponse.RUNNING
+            msg   = f"Running (pid={pid})"
+        elif rc is None:
+            state = pb2.RunStatusResponse.IDLE
+            msg   = "Idle — no STL export has been started yet"
+        elif rc == 0:
+            state = pb2.RunStatusResponse.DONE
+            msg   = "Completed successfully"
+        else:
+            state = pb2.RunStatusResponse.ERROR
+            msg   = f"Exited with return code {rc}"
+        return pb2.RunStatusResponse(state=state, pid=pid, message=msg, return_code=rc or 0)
+
+    def StreamStlOutput(self, request, context):
+        for entry in _stl_runner.output_stream():
+            if not context.is_active():
+                return
+            yield _entry_to_proto(entry)
+
+    def DownloadStl(self, request, context):
+        which = (request.which or "lattice").lower().strip()
+
+        if which == "all":
+            # Tar all gyroid_surface*.stl files that exist next to the script
+            stl_paths = sorted(BASE_DIR.glob("gyroid_surface*.stl"))
+            if not stl_paths:
+                context.abort(grpc.StatusCode.NOT_FOUND,
+                              "No gyroid_surface*.stl files found in " + str(BASE_DIR))
+                return
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+                for p in stl_paths:
+                    tar.add(str(p), arcname=p.name)
+            data  = buf.getvalue()
+            total = len(data)
+            fname = "gyroid_surface_all.tar.gz"
+            for offset in range(0, total, CHUNK_SIZE):
+                chunk   = data[offset : offset + CHUNK_SIZE]
+                is_last = (offset + CHUNK_SIZE) >= total
+                yield pb2.FileChunk(data=chunk, filename=fname, total_size=total, is_last=is_last)
+            return
+
+        target = _STL_FILES.get(which)
+        if target is None:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                          f"Unknown STL type {which!r}. Use: lattice, encap, surface, all")
+            return
+        if not target.exists():
+            context.abort(grpc.StatusCode.NOT_FOUND,
+                          f"{target.name} not found — run StartStlExport first")
+            return
+        try:
+            yield from _stream_file(target, target.name)
         except Exception as exc:
             context.abort(grpc.StatusCode.INTERNAL, str(exc))
 

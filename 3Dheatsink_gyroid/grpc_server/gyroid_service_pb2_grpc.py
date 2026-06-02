@@ -92,6 +92,31 @@ class GyroidOptimizerStub:
                 request_serializer=gyroid__service__pb2.DownloadRequest.SerializeToString,
                 response_deserializer=gyroid__service__pb2.FileChunk.FromString,
                 _registered_method=True)
+        self.StartStlExport = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StartStlExport',
+                request_serializer=gyroid__service__pb2.StlExportRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.StopStlExport = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StopStlExport',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.GetStlStatus = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/GetStlStatus',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.RunStatusResponse.FromString,
+                _registered_method=True)
+        self.StreamStlOutput = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/StreamStlOutput',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.OutputLine.FromString,
+                _registered_method=True)
+        self.DownloadStl = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/DownloadStl',
+                request_serializer=gyroid__service__pb2.StlFileRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.FileChunk.FromString,
+                _registered_method=True)
 
 
 class GyroidOptimizerServicer:
@@ -187,6 +212,43 @@ class GyroidOptimizerServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartStlExport(self, request, context):
+        """── STL export ─────────────────────────────────────────────────────────────
+
+        Start gyroid_to_stl.py (error if already running).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopStlExport(self, request, context):
+        """Send SIGTERM to the STL export process (SIGKILL after 10 s).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStlStatus(self, request, context):
+        """Query the STL export process state.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamStlOutput(self, request, context):
+        """Server-streaming: replay buffered STL-export output, then tail live output.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DownloadStl(self, request, context):
+        """Download a generated STL file (or all of them as a .tar.gz).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GyroidOptimizerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -243,6 +305,31 @@ def add_GyroidOptimizerServicer_to_server(servicer, server):
             'DownloadFile': grpc.unary_stream_rpc_method_handler(
                     servicer.DownloadFile,
                     request_deserializer=gyroid__service__pb2.DownloadRequest.FromString,
+                    response_serializer=gyroid__service__pb2.FileChunk.SerializeToString,
+            ),
+            'StartStlExport': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartStlExport,
+                    request_deserializer=gyroid__service__pb2.StlExportRequest.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'StopStlExport': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopStlExport,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'GetStlStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStlStatus,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.RunStatusResponse.SerializeToString,
+            ),
+            'StreamStlOutput': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamStlOutput,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.OutputLine.SerializeToString,
+            ),
+            'DownloadStl': grpc.unary_stream_rpc_method_handler(
+                    servicer.DownloadStl,
+                    request_deserializer=gyroid__service__pb2.StlFileRequest.FromString,
                     response_serializer=gyroid__service__pb2.FileChunk.SerializeToString,
             ),
     }
@@ -545,6 +632,141 @@ class GyroidOptimizer:
             target,
             '/gyroid.GyroidOptimizer/DownloadFile',
             gyroid__service__pb2.DownloadRequest.SerializeToString,
+            gyroid__service__pb2.FileChunk.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartStlExport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StartStlExport',
+            gyroid__service__pb2.StlExportRequest.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopStlExport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StopStlExport',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStlStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/GetStlStatus',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.RunStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamStlOutput(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StreamStlOutput',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.OutputLine.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DownloadStl(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/DownloadStl',
+            gyroid__service__pb2.StlFileRequest.SerializeToString,
             gyroid__service__pb2.FileChunk.FromString,
             options,
             channel_credentials,

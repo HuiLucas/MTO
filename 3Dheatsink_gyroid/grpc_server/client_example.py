@@ -184,6 +184,50 @@ def cmd_download_app(stub, args):
     _save_chunks(chunks, out_dir)
 
 
+def cmd_stl_export(stub, args):
+    resp = stub.StartStlExport(pb2.StlExportRequest(extra_args=args.extra_args))
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_stl_stop(stub, _args):
+    resp = stub.StopStlExport(pb2.Empty())
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_stl_status(stub, _args):
+    resp = stub.GetStlStatus(pb2.Empty())
+    state_name = pb2.RunStatusResponse.State.Name(resp.state)
+    print(f"State      : {state_name}")
+    print(f"PID        : {resp.pid or '—'}")
+    print(f"Return code: {resp.return_code}")
+    print(f"Message    : {resp.message}")
+
+
+def cmd_stl_stream(stub, _args):
+    print("[streaming STL export output — Ctrl-C to quit]\n")
+    try:
+        for line in stub.StreamStlOutput(pb2.Empty()):
+            ts = time.strftime("%H:%M:%S", time.localtime(line.timestamp_ms / 1000))
+            print(f"[{ts}] {line.line}")
+    except KeyboardInterrupt:
+        print("\n[stream closed]")
+    except grpc.RpcError as exc:
+        print(f"gRPC error: {exc.details()}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_download_stl(stub, args):
+    which   = getattr(args, "which", "lattice") or "lattice"
+    out_dir = Path(args.out_dir) if hasattr(args, "out_dir") and args.out_dir else Path(".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    chunks = stub.DownloadStl(pb2.StlFileRequest(which=which))
+    _save_chunks(chunks, out_dir)
+
+
 def _save_chunks(stream, out_dir: Path) -> None:
     out_path: Path | None = None
     fh = None
@@ -242,6 +286,23 @@ def main() -> None:
     p = sub.add_parser("download-app")
     p.add_argument("out_dir", nargs="?", default=".")
 
+    p = sub.add_parser("stl-export",
+                       help="Run gyroid_to_stl.py on the server")
+    p.add_argument("extra_args", nargs="*",
+                   help="Extra flags forwarded to gyroid_to_stl.py, "
+                        "e.g. --res 0.015 --mirror-y")
+
+    sub.add_parser("stl-stop",   help="Stop the running STL export")
+    sub.add_parser("stl-status", help="Show STL export process state")
+    sub.add_parser("stl-stream", help="Tail live STL export output")
+
+    p = sub.add_parser("download-stl",
+                       help="Download a generated STL file from the server")
+    p.add_argument("which", nargs="?", default="lattice",
+                   choices=["lattice", "encap", "surface", "all"],
+                   help="lattice (default), encap, surface, or all (→ .tar.gz)")
+    p.add_argument("out_dir", nargs="?", default=".")
+
     args = parser.parse_args()
 
     with _channel(args.host, args.port) as channel:
@@ -259,6 +320,11 @@ def main() -> None:
             "list-files":    cmd_list_files,
             "download":      cmd_download,
             "download-app":  cmd_download_app,
+            "stl-export":    cmd_stl_export,
+            "stl-stop":      cmd_stl_stop,
+            "stl-status":    cmd_stl_status,
+            "stl-stream":    cmd_stl_stream,
+            "download-stl":  cmd_download_stl,
         }
         dispatch[args.command](stub, args)
 

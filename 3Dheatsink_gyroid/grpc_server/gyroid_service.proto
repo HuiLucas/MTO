@@ -112,6 +112,25 @@ message FileChunk {
   bool   is_last    = 4;
 }
 
+// ─── STL export ──────────────────────────────────────────────────────────────
+
+// Start gyroid_to_stl.py with optional extra CLI flags.
+// If extra_args is empty the script uses its own defaults (reads the YAML config).
+// Example extra_args: ["--res", "0.015", "--mirror-y"]
+message StlExportRequest {
+  repeated string extra_args = 1;
+}
+
+// Which STL file to download.
+//   "lattice"  → gyroid_surface_lattice.stl  (gyroid wall mesh)
+//   "encap"    → gyroid_surface_encap.stl    (encapsulation shell)
+//   "surface"  → gyroid_surface.stl          (combined, when no encap)
+//   "all"      → tar.gz of all gyroid_surface*.stl files next to the script
+// Defaults to "lattice" when empty.
+message StlFileRequest {
+  string which = 1;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 service GyroidOptimizer {
@@ -159,4 +178,21 @@ service GyroidOptimizer {
 
   // Stream a single file or a .tar.gz of a directory.
   rpc DownloadFile (DownloadRequest) returns (stream FileChunk);
+
+  // ── STL export ─────────────────────────────────────────────────────────────
+
+  // Start gyroid_to_stl.py (error if already running).
+  rpc StartStlExport (StlExportRequest) returns (StatusResponse);
+
+  // Send SIGTERM to the STL export process (SIGKILL after 10 s).
+  rpc StopStlExport (Empty) returns (StatusResponse);
+
+  // Query the STL export process state.
+  rpc GetStlStatus (Empty) returns (RunStatusResponse);
+
+  // Server-streaming: replay buffered STL-export output, then tail live output.
+  rpc StreamStlOutput (Empty) returns (stream OutputLine);
+
+  // Download a generated STL file (or all of them as a .tar.gz).
+  rpc DownloadStl (StlFileRequest) returns (stream FileChunk);
 }
