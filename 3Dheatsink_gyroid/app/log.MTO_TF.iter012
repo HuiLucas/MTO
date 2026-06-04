@@ -7,25 +7,25 @@
 \*---------------------------------------------------------------------------*/
 Build  : 11-e1fc8c682ae6
 Exec   : MTO_TF -parallel -case /workspace/MTO/3Dheatsink_gyroid/app
-Date   : Jun 01 2026
-Time   : 23:32:28
+Date   : Jun 02 2026
+Time   : 09:28:32
 Host   : "1d35c23c7b67"
-PID    : 3429605
+PID    : 3845556
 I/O    : uncollated
 Case   : /workspace/MTO/3Dheatsink_gyroid/app
 nProcs : 10
 Slaves : 
 9
 (
-"1d35c23c7b67.3429606"
-"1d35c23c7b67.3429607"
-"1d35c23c7b67.3429608"
-"1d35c23c7b67.3429609"
-"1d35c23c7b67.3429610"
-"1d35c23c7b67.3429611"
-"1d35c23c7b67.3429612"
-"1d35c23c7b67.3429613"
-"1d35c23c7b67.3429614"
+"1d35c23c7b67.3845557"
+"1d35c23c7b67.3845558"
+"1d35c23c7b67.3845559"
+"1d35c23c7b67.3845560"
+"1d35c23c7b67.3845561"
+"1d35c23c7b67.3845562"
+"1d35c23c7b67.3845563"
+"1d35c23c7b67.3845564"
+"1d35c23c7b67.3845565"
 )
 
 Pstream initialised with:
@@ -3521,7 +3521,7 @@ Max(D0-opt2*0.2,D1): 159.8
 
  Heaviside_rho
 
-ExecutionTime = 70.84 s  ClockTime = 71 s
+ExecutionTime = 70.13 s  ClockTime = 71 s
 
 End
 

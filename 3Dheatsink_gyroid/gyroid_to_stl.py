@@ -151,11 +151,16 @@ def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
                      k_base: float, half_thickness: float,
                      rbf_field: _BakedRBF | None,
                      batch: int = 500_000,
-                     rot_matrix: np.ndarray | None = None) -> np.ndarray:
+                     rot_matrix: np.ndarray | None = None,
+                     return_raw_G: bool = False,
+                     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Build the scalar volume  f = |G| - half_thickness  over the grid defined
     by 1-D arrays xv, yv, zv (all in mm).  Returns shape (Nx, Ny, Nz) float32.
     The isosurface f = 0 is the gyroid wall boundary.
+
+    If return_raw_G is True, returns (sdf, G_vol) where G_vol is the signed
+    G field before the abs(), needed to separate the two fluid channels.
     """
     nx, ny, nz = len(xv), len(yv), len(zv)
     XG, YG, ZG = np.meshgrid(xv, yv, zv, indexing='ij')
@@ -170,7 +175,10 @@ def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
             print(f"  Evaluating G … {i:,}/{N:,}  ({100*i/N:.0f}%)", end='\r')
 
     print(f"  Evaluating G … {N:,}/{N:,} (100%)        ")
-    sdf = np.abs(G).reshape(nx, ny, nz) - np.float32(half_thickness)
+    G_vol = G.reshape(nx, ny, nz)
+    sdf = np.abs(G_vol) - np.float32(half_thickness)
+    if return_raw_G:
+        return sdf, G_vol
     return sdf
 
 
@@ -458,6 +466,14 @@ def main() -> None:
                              '(xmin xmax ymin ymax zmin zmax). '
                              'Typically the inlet/outlet faces. '
                              'When --mirror-y is used, add ymax to keep the symmetry plane open.')
+    parser.add_argument('--fluid-stl', action='store_true',
+                        dest='fluid_stl',
+                        help='Also export the fluid-accessible volume (SDF > 0) as a '
+                             'separate STL.  The output path is derived from --out by '
+                             'inserting "_fluid" before the extension.')
+    parser.add_argument('--fluid-out', default=None, dest='fluid_out',
+                        help='Override the output path for the fluid STL '
+                             '(only used when --fluid-stl is given).')
     args = parser.parse_args()
 
     ctrl_path = Path(args.ctrl)
@@ -537,7 +553,13 @@ def main() -> None:
         print(f"               (rotated+pi/2-shifted formula)")
 
     print(f"\n  Computing |G| - half_thickness …")
-    sdf = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field, rot_matrix=rot_matrix)
+    if args.fluid_stl:
+        sdf, G_vol = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field,
+                                      rot_matrix=rot_matrix, return_raw_G=True)
+    else:
+        sdf = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field,
+                               rot_matrix=rot_matrix)
+        G_vol = None
     print(f"  SDF range: [{sdf.min():.4g}, {sdf.max():.4g}]"
           f"   solid_frac ≈ {(sdf < 0).mean():.3f}")
 
@@ -547,6 +569,19 @@ def main() -> None:
     # where the gyroid sheet is cut off at the domain wall, producing a
     # water-tight closed solid.
     sdf_closed = np.pad(sdf, 1, constant_values=np.float32(1.0))
+    # Per-channel fluid volumes.  Padding with +1 seals each channel at the
+    # domain boundary so marching cubes produces a closed solid.
+    #   Channel pos: G > +half_t  →  field = half_t - G  (negative inside)
+    #   Channel neg: G < -half_t  →  field = G + half_t   (negative inside)
+    if args.fluid_stl and G_vol is not None:
+        half_t_f32 = np.float32(half_t)
+        ch_pos_closed = np.pad(half_t_f32 - G_vol, 1, constant_values=np.float32(1.0))
+        ch_neg_closed = np.pad(G_vol + half_t_f32, 1, constant_values=np.float32(1.0))
+        del G_vol
+    else:
+        ch_pos_closed = ch_neg_closed = None
+        if G_vol is not None:
+            del G_vol
     del sdf
     # Origin shifts back by one voxel to match the padded grid.
     mc_origin = np.array([args.xmin - res, args.ymin - res, args.zmin - res],
@@ -607,6 +642,36 @@ def main() -> None:
         write_binary_stl(encap_path,   encap_verts, encap_faces)
     else:
         write_binary_stl(out_path, verts, faces)
+
+    # ── Optional fluid-channel STLs (G > +half_t and G < -half_t) ───────────
+    if args.fluid_stl and ch_pos_closed is not None:
+        base = Path(args.fluid_out) if args.fluid_out else out_path
+        base.parent.mkdir(parents=True, exist_ok=True)
+
+        for label, vol in (('Gpos', ch_pos_closed), ('Gneg', ch_neg_closed)):
+            print(f"\n  Running marching cubes (fluid channel {label}) …")
+            verts_f_idx, faces_f, _, _ = marching_cubes(
+                vol,
+                level=0.0,
+                spacing=(res, res, res),
+                gradient_direction='descent',
+                allow_degenerate=False,
+            )
+            verts_f = verts_f_idx + mc_origin
+            print(f"  Extracted  : {len(verts_f):,} vertices, {len(faces_f):,} triangles")
+
+            if args.mirror_y:
+                print(f"  Mirroring across y = {args.ymax} …")
+                verts_f, faces_f = mirror_mesh_y(verts_f, faces_f, y_mirror=args.ymax)
+                print(f"  After mirror: {len(verts_f):,} vertices, {len(faces_f):,} triangles")
+
+            if args.target_faces > 0:
+                verts_f, faces_f = simplify_mesh_in_memory(verts_f, faces_f, args.target_faces)
+
+            fluid_path = base.with_name(base.stem + f'_fluid_{label}' + base.suffix)
+            write_binary_stl(fluid_path, verts_f, faces_f)
+
+        del ch_pos_closed, ch_neg_closed
 
     print(f"\n  Done.")
 
