@@ -191,10 +191,7 @@ def main() -> None:
     parser.add_argument('--distance', type=float, default=0.07,
                         help='Surface-distance bound (mm): curvature-adaptive '
                              'refinement threshold')
-    parser.add_argument('--margin',   type=float, default=-1.0,
-                        help='Boundary taper width (mm): surface fades to +1 '
-                             'within this distance of the domain wall. '
-                             'Default: 3 × --radius (auto).')
+    # --margin removed: cap_margin is now auto-derived from --radius in the C++ binary
     # Quad conversion
     parser.add_argument('--no-quad',  action='store_true',
                         help='Skip Catmull-Clark quad conversion; output STL only')
@@ -220,10 +217,8 @@ def main() -> None:
     print(f"  Wall     : {args.wall} mm  →  half_t = {half_t:.4f}")
     print(f"  Domain   : x[{args.xmin},{args.xmax}]  "
           f"y[{args.ymin},{args.ymax}]  z[{args.zmin},{args.zmax}] mm")
-    auto_margin = 3.0 * args.radius if args.margin < 0 else args.margin
     print(f"  CGAL     : angular={args.angular}°  "
-          f"radius={args.radius} mm  dist={args.distance} mm  "
-          f"margin={auto_margin:.3g} mm")
+          f"radius={args.radius} mm  dist={args.distance} mm")
 
     # ── Load control points and build baked RBF ───────────────────────────────
     rbf_field  = None
@@ -280,7 +275,6 @@ def main() -> None:
         "--angular",  str(args.angular),
         "--radius",   str(args.radius),
         "--distance", str(args.distance),
-        "--margin",   str(args.margin),
     ]
     print(f"  {' '.join(cmd_mesh)}\n")
     t0 = time.time()
@@ -299,13 +293,28 @@ def main() -> None:
     print(f"\n  Converting to quad mesh via stl_to_quad_cgal …")
     _compile(CPP_SRC_QUAD, CPP_BIN_QUAD)
 
+    # Derive isotropic-remesh edge length from the CGAL circumradius bound.
+    # For equilateral triangles: edge = circumradius × √3.
+    # Expressing as a % of the bbox diagonal keeps the parameter dimensionless.
+    # This ensures that a finer CGAL mesh (small --radius) stays fine through
+    # the remeshing step instead of being coarsened to the old fixed 1.5%.
+    bbox_diag = math.sqrt(
+        (args.xmax - args.xmin)**2 +
+        (args.ymax - args.ymin)**2 +
+        (args.zmax - args.zmin)**2)
+    remesh_edge_mm  = args.radius * math.sqrt(3)   # edge ≈ circumradius × √3
+    remesh_edge_pct = max(0.1, min(3.0,            # clamp to sane range
+                          remesh_edge_mm / bbox_diag * 100))
+
+    print(f"  Remesh edge: {remesh_edge_mm:.3f} mm  ({remesh_edge_pct:.2f}% of diag)")
+
     cmd_quad = [
         str(CPP_BIN_QUAD),
         str(stl_path),
         str(out_path),
-        "--target-faces", str(args.target_faces),
-        "--coarse-faces", str(args.coarse_faces),
-        "--remesh-edge-pct", "1.5",
+        "--target-faces",    str(args.target_faces),
+        "--coarse-faces",    str(args.coarse_faces),
+        "--remesh-edge-pct", f"{remesh_edge_pct:.4f}",
         "--curv-pin-percentile", "90",
     ]
     print(f"  {' '.join(cmd_quad)}\n")

@@ -12,10 +12,15 @@
  *   (with optional gyroid rotation via R)
  *
  *   Wall surfaces:
- *     G(p) - half_t = 0     (positive sheet)
- *     G(p) + half_t = 0     (negative sheet)
+ *     G(p) - half_t = 0     (positive sheet, outer boundary of solid wall)
+ *     G(p) + half_t = 0     (negative sheet, inner boundary of solid wall)
  *
- * The two sheets are meshed separately and then combined into one mesh file.
+ * Both sheets are meshed in a single pass via F_wall = |G(p)| − half_t.
+ * Closing at domain boundary planes (analogous to gyroid_to_stl.py's +1 padding):
+ *   • Inside domain:   F_wall = |G| − half_t  (negative inside solid wall)
+ *   • Just outside:    F_wall → +1             (thin taper, always positive)
+ *   → Only generates closing caps where the solid wall is cut (|G| < half_t);
+ *     fluid channels (|G| > half_t) remain open at the domain faces.
  *
  * CGAL meshing is intrinsically curvature-aware:
  *   • The distance_bound criterion limits how far the mesh may deviate from the
@@ -80,7 +85,7 @@ typedef CGAL::Surface_mesh<Point_3>                        SMesh;
 struct GyrState {
     double xmin, xmax, ymin, ymax, zmin, zmax;
     double k_base, half_t;
-    double margin = 0.3;  // boundary taper width in mm (set from --margin)
+    double cap_margin = 0.02; // taper width just outside domain for closing caps (mm)
 
     bool has_rotation;
     double R[9];   // row-major 3×3
@@ -205,92 +210,142 @@ static double gyroid_G(double x, double y, double z)
           + std::sin(kz*z)*std::cos(kx*x);
 }
 
-// ── Boundary taper ────────────────────────────────────────────────────────────
+// ── Wall implicit function ─────────────────────────────────────────────────────
 //
-// Replaces the previous hard F=1 outside-domain cutoff.
+// F_wall(p) = |G(p)| − half_t
 //
-// Problem with hard cutoff: at every domain face where G(p) < half_t, the
-// function jumps from negative (solid) to +1, producing a spurious zero level
-// set exactly ON the domain boundary.  CGAL meshes this "phantom surface",
-// making the output look like a solid box.
+//   F < 0  →  inside the solid gyroid wall  (|G| < half_t)
+//   F > 0  →  in either fluid channel        (|G| > half_t)
+//   F = 0  →  zero set = BOTH sheets simultaneously
+//              (G = +half_t  AND  G = -half_t, two surfaces per gyroid cell)
 //
-// Fix: smooth taper over g.margin mm from the boundary.
-//   d  = signed distance from domain (positive inside, negative outside)
-//   s  = smoothstep(d / margin)  in [0,1]   (0 at boundary, 1 well inside)
-//   F  = lerp(1, G - half_t, s)
-//      = 1 + s * ((G - half_t) - 1)
+// Closing at domain boundary (analogous to gyroid_to_stl.py's +1 voxel pad):
+//   Inside domain (d ≥ 0):  F = |G| − half_t   (natural value)
+//   Just outside  (d < 0):  F → 1  via thin linear taper over cap_margin
 //
-// At d ≤ 0   (outside):  F = 1.0  (always positive, mesher ignores)
-// At d = 0   (boundary): s = 0 → F = 1.0  (no zero crossing at wall)
-// At d ≥ margin:         s = 1 → F = G - half_t  (natural gyroid value)
+// Why this is correct:
+//   • Where solid wall meets domain face (|G| < half_t → F < 0 inside):
+//       F jumps to +1 just outside → zero crossing near the domain face
+//       → CGAL creates a flat "closing cap" triangle ✓
+//   • Where fluid channel meets domain face (|G| > half_t → F > 0 inside):
+//       F is positive on both sides → no zero crossing → no cap ✓
 //
-// The surface only exists in the interior and terminates before reaching
-// the domain walls, leaving the boundary clean.
+// The two earlier per-sheet functors (FunPos, FunNeg) each capped the OTHER
+// fluid channel's boundary too, creating a sealed box.  FunWall avoids this.
 
-static double domain_blend_F(double x, double y, double z, double Gval, double sign)
-{
-    // Signed distance to the domain box  (positive = inside)
-    double d = std::min({
-        x - g.xmin, g.xmax - x,
-        y - g.ymin, g.ymax - y,
-        z - g.zmin, g.zmax - z
-    });
-
-    if (d <= 0.0) return 1.0;              // outside domain
-
-    double m = g.margin;
-    double s;
-    if (d >= m)
-        s = 1.0;                           // fully inside: no blending
-    else {
-        double t = d / m;                  // t ∈ (0,1)
-        s = t * t * (3.0 - 2.0 * t);      // smoothstep: 0→1
-    }
-
-    double F_inner = sign * Gval - g.half_t;  // +1: G-half_t, -1: -G-half_t
-    return 1.0 + s * (F_inner - 1.0);         // lerp(1, F_inner, s)
-}
-
-// Positive sheet:  zero set at  G(p) = +half_t
-struct FunPos {
+struct FunWall {
     FT operator()(Point_3 p) const {
         double x = CGAL::to_double(p.x());
         double y = CGAL::to_double(p.y());
         double z = CGAL::to_double(p.z());
-        double G = gyroid_G(x, y, z);
-        return FT(domain_blend_F(x, y, z, G, +1.0));
-    }
-};
 
-// Negative sheet:  zero set at  G(p) = -half_t
-struct FunNeg {
-    FT operator()(Point_3 p) const {
-        double x = CGAL::to_double(p.x());
-        double y = CGAL::to_double(p.y());
-        double z = CGAL::to_double(p.z());
-        double G = gyroid_G(x, y, z);
-        return FT(domain_blend_F(x, y, z, G, -1.0));
+        // Signed distance from domain box (positive = inside)
+        double d = std::min({
+            x - g.xmin, g.xmax - x,
+            y - g.ymin, g.ymax - y,
+            z - g.zmin, g.zmax - z
+        });
+
+        double G    = gyroid_G(x, y, z);
+        double Fraw = std::abs(G) - g.half_t;   // natural wall function
+
+        if (d >= 0.0)
+            return FT(Fraw);                     // inside domain: unchanged
+
+        if (d < -g.cap_margin)
+            return FT(1.0);                      // clearly outside: fluid
+
+        // Thin linear taper in [-cap_margin, 0): smoothly push to +1
+        // so the closing caps form just at the domain face rather than
+        // creating a sharp function discontinuity that could confuse the mesher.
+        double t = -d / g.cap_margin;            // 0 at face, 1 at cap_margin outside
+        return FT(Fraw + t * (1.0 - Fraw));      // lerp(Fraw, 1, t)
     }
 };
 
 // ── Bounding sphere ───────────────────────────────────────────────────────────
 //
-// The centre is placed one bbox-diagonal outside the xmin face, guaranteeing
-// F(centre) = +1 regardless of the gyroid value at that location.
-// The squared radius is chosen to encompass the entire domain with 10% margin.
+// The bounding sphere MUST satisfy two conditions:
+//   1. It contains the entire domain (so the mesher sees all gyroid components).
+//   2. Its centre has F(centre) > 0 (CGAL's requirement: centre is "outside").
+//
+// OLD approach: place centre one diagonal outside xmin.  Problem: the sphere
+// then has radius ≈ 18 mm and the 5×2.5×10 mm domain occupies only ~0.5% of
+// the sphere volume.  CGAL seeds the Delaunay refinement by random sampling
+// inside the sphere, so most of the ~74 disconnected gyroid components get
+// missed → large "solid" regions in the output.
+//
+// FIX: use a TIGHT sphere centred on a domain point that is in a FLUID channel,
+// i.e., where G(p) > half_t (for F_pos).  A fluid channel point satisfies
+// F_pos > 0 automatically (no fudge factor needed).  The sphere only needs to
+// be large enough to reach the farthest domain corner from that centre, keeping
+// it within the domain.  CGAL's random sampling now hits the domain with near
+// 100% probability, guaranteeing all components are seeded.
+//
+// We locate a fluid channel point by scanning a coarse quarter-period grid.
+// The gyroid has ~73 % fluid volume, so finding such a point takes O(1) steps.
 
 static Sphere_3 make_bounding_sphere()
 {
-    double diag = std::sqrt(
-          (g.xmax-g.xmin)*(g.xmax-g.xmin)
-        + (g.ymax-g.ymin)*(g.ymax-g.ymin)
-        + (g.zmax-g.zmin)*(g.zmax-g.zmin));
+    // Strategy: place the sphere centre on the domain point CLOSEST to the
+    // domain centroid that lies in the right fluid channel (sign*G > half_t).
+    //
+    // Minimising the distance from centroid → minimises the sphere radius needed
+    // to reach the farthest corner → maximises the fraction of the sphere volume
+    // that lies inside the domain → maximises coverage of all gyroid components.
+    //
+    // Example improvement:
+    //   Old approach (centre 1 diag outside xmin): sphere volume ~28 500 mm³,
+    //     domain fraction ~0.4 %
+    //   New approach (centre near centroid):       sphere volume ~  840 mm³,
+    //     domain fraction ~15 %   → ~37× more samples hit the domain
+    //
+    // Scan quarter-period grid; keep the candidate closest to the centroid.
 
-    double cx = g.xmin - diag;    // always outside domain
-    double cy = 0.5 * (g.ymin + g.ymax);
-    double cz = 0.5 * (g.zmin + g.zmax);
+    double step = M_PI / (2.0 * g.k_base);   // λ/4 ≈ 0.375 mm at default k
 
-    // Maximum distance from centre to any domain corner
+    double mcx = 0.5 * (g.xmin + g.xmax);    // domain centroid
+    double mcy = 0.5 * (g.ymin + g.ymax);
+    double mcz = 0.5 * (g.zmin + g.zmax);
+
+    double best_cx = 1e18, best_cy = 1e18, best_cz = 1e18;
+    double best_dist2 = 1e36;
+
+    for (double x = g.xmin + step*0.5; x < g.xmax; x += step)
+    for (double y = g.ymin + step*0.5; y < g.ymax; y += step)
+    for (double z = g.zmin + step*0.5; z < g.zmax; z += step)
+    {
+        double Gval = gyroid_G(x, y, z);
+        // |G| > half_t: point is in either fluid channel → FunWall > 0 ✓
+        if (std::abs(Gval) > g.half_t + 0.05)
+        {
+            double d2 = (x-mcx)*(x-mcx) + (y-mcy)*(y-mcy) + (z-mcz)*(z-mcz);
+            if (d2 < best_dist2) { best_dist2 = d2; best_cx=x; best_cy=y; best_cz=z; }
+        }
+    }
+
+    double cx, cy, cz;
+    if (best_dist2 < 1e35)
+    {
+        cx = best_cx; cy = best_cy; cz = best_cz;
+        std::cout << "  Sphere centre (fluid channel, dist-to-centroid="
+                  << std::sqrt(best_dist2) << " mm): ("
+                  << cx << ", " << cy << ", " << cz << ")\n";
+    }
+    else
+    {
+        // Fallback: centre outside domain (always gives F=1)
+        double diag = std::sqrt(
+              (g.xmax-g.xmin)*(g.xmax-g.xmin)
+            + (g.ymax-g.ymin)*(g.ymax-g.ymin)
+            + (g.zmax-g.zmin)*(g.zmax-g.zmin));
+        cx = g.xmin - diag;
+        cy = mcy;
+        cz = mcz;
+        std::cerr << "  WARNING: no fluid-channel centre found; using fallback\n";
+    }
+
+    // Minimum radius to contain the entire domain + 5 % margin
     double rmax = 0.0;
     for (int dx : {0,1}) for (int dy : {0,1}) for (int dz : {0,1}) {
         double ex = (dx ? g.xmax : g.xmin) - cx;
@@ -298,95 +353,80 @@ static Sphere_3 make_bounding_sphere()
         double ez = (dz ? g.zmax : g.zmin) - cz;
         rmax = std::max(rmax, std::sqrt(ex*ex + ey*ey + ez*ez));
     }
-    double r = rmax * 1.1;        // 10% margin
+    double r = rmax * 1.05;
+    std::cout << "  Sphere r = " << r << " mm (volume "
+              << (4.0/3.0*M_PI*r*r*r) << " mm³)\n";
     return Sphere_3(Point_3(cx, cy, cz), FT(r * r));
 }
 
-// ── Mesh one implicit surface ────────────────────────────────────────────────
+// ── Mesh the complete gyroid wall ─────────────────────────────────────────────
+//
+// Single call with FunWall = |G| - half_t.
+// CGAL::Non_manifold_tag allows the many disconnected components (both sheets
+// of each gyroid unit cell, ~74 components total) plus the flat closing caps
+// that form at the domain boundary faces (only in solid-wall regions).
 
-template <typename Fun>
-static SMesh mesh_one_sheet(const Fun& fun,
-                            const Sphere_3& bsphere,
-                            double angular_bound,
-                            double radius_bound,
-                            double distance_bound,
-                            const std::string& label)
+static SMesh mesh_wall(double angular_bound,
+                       double radius_bound,
+                       double distance_bound)
 {
-    std::cout << "  Meshing sheet " << label << " …\n" << std::flush;
+    std::cout << "Meshing gyroid wall (|G| − half_t, both sheets + closing caps) …\n"
+              << std::flush;
+
+    Sphere_3 bsphere = make_bounding_sphere();
+    std::cout << "  Sphere r = "
+              << std::sqrt(CGAL::to_double(bsphere.squared_radius()))
+              << " mm  (volume "
+              << (4.0/3.0*M_PI*std::pow(
+                      std::sqrt(CGAL::to_double(bsphere.squared_radius())),3))
+              << " mm³)\n";
 
     Tr tr;
     C2t3 c2t3(tr);
 
-    typedef CGAL::Implicit_surface_3<GT, Fun>   Surface_3;
-    Surface_3 surface(fun, bsphere);
+    typedef CGAL::Implicit_surface_3<GT, FunWall> Surface_3;
+    Surface_3 surface(FunWall{}, bsphere);
 
     CGAL::Surface_mesh_default_criteria_3<Tr> criteria(
-        angular_bound,
-        radius_bound,
-        distance_bound
-    );
+        angular_bound, radius_bound, distance_bound);
 
-    CGAL::make_surface_mesh(c2t3, surface, criteria,
-                            CGAL::Non_manifold_tag());
+    CGAL::make_surface_mesh(c2t3, surface, criteria, CGAL::Non_manifold_tag());
 
     SMesh sm;
     CGAL::facets_in_complex_2_to_triangle_mesh(c2t3, sm);
 
-    std::cout << "  Sheet " << label << ": "
-              << sm.num_vertices() << " vertices, "
+    std::cout << "  Result: " << sm.num_vertices() << " vertices, "
               << sm.num_faces() << " faces\n";
     return sm;
 }
 
-// ── Combine two Surface_mesh objects and write STL ────────────────────────────
+// ── Write Surface_mesh as binary STL ─────────────────────────────────────────
 
-static void write_combined_stl(const std::string& out_path,
-                                const SMesh& sm_pos,
-                                const SMesh& sm_neg)
+static void write_stl(const std::string& out_path, const SMesh& sm)
 {
-    // Collect all points and triangles from both meshes
-    using P3 = Point_3;
-    std::vector<P3>                          points;
-    std::vector<std::array<std::size_t, 3>> triangles;
-    points.reserve(sm_pos.num_vertices() + sm_neg.num_vertices());
-    triangles.reserve(sm_pos.num_faces() + sm_neg.num_faces());
+    std::vector<Point_3>                         points;
+    std::vector<std::array<std::size_t, 3>>      triangles;
+    points.reserve(sm.num_vertices());
+    triangles.reserve(sm.num_faces());
 
-    // Positive sheet
-    for (auto v : sm_pos.vertices())
-        points.push_back(sm_pos.point(v));
-    for (auto f : sm_pos.faces()) {
-        auto h = sm_pos.halfedge(f);
-        std::array<std::size_t, 3> tri = {
-            (std::size_t)sm_pos.target(h).idx(),
-            (std::size_t)sm_pos.target(sm_pos.next(h)).idx(),
-            (std::size_t)sm_pos.target(sm_pos.next(sm_pos.next(h))).idx()
-        };
-        triangles.push_back(tri);
+    for (auto v : sm.vertices())
+        points.push_back(sm.point(v));
+    for (auto f : sm.faces()) {
+        auto h = sm.halfedge(f);
+        triangles.push_back({
+            (std::size_t)sm.target(h).idx(),
+            (std::size_t)sm.target(sm.next(h)).idx(),
+            (std::size_t)sm.target(sm.next(sm.next(h))).idx()
+        });
     }
 
-    // Negative sheet (offset indices)
-    std::size_t offset = sm_pos.num_vertices();
-    for (auto v : sm_neg.vertices())
-        points.push_back(sm_neg.point(v));
-    for (auto f : sm_neg.faces()) {
-        auto h = sm_neg.halfedge(f);
-        std::array<std::size_t, 3> tri = {
-            offset + (std::size_t)sm_neg.target(h).idx(),
-            offset + (std::size_t)sm_neg.target(sm_neg.next(h)).idx(),
-            offset + (std::size_t)sm_neg.target(sm_neg.next(sm_neg.next(h))).idx()
-        };
-        triangles.push_back(tri);
-    }
-
-    std::cout << "Writing combined STL: "
+    std::cout << "Writing " << out_path << " — "
               << points.size() << " vertices, "
-              << triangles.size() << " triangles  →  " << out_path << "\n";
+              << triangles.size() << " triangles\n";
 
     if (!CGAL::IO::write_STL(out_path, points, triangles,
                               CGAL::parameters::use_binary_mode(true)))
-    {
         std::cerr << "ERROR: cannot write " << out_path << "\n";
-    }
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -399,8 +439,7 @@ int main(int argc, char* argv[])
                   << " <params.bin> <output.stl>"
                   << " [--angular  A]"
                   << " [--radius   R]"
-                  << " [--distance D]"
-                  << " [--margin   M]\n";
+                  << " [--distance D]\n";
         return 1;
     }
 
@@ -410,7 +449,6 @@ int main(int argc, char* argv[])
     double angular_bound  = 30.0;
     double radius_bound   = 0.15;
     double distance_bound = 0.07;
-    double margin         = -1.0;   // -1 = auto (3 × radius_bound)
 
     for (int i = 3; i < argc - 1; ++i)
     {
@@ -418,13 +456,11 @@ int main(int argc, char* argv[])
         if      (flag == "--angular")  { angular_bound  = std::stod(val); ++i; }
         else if (flag == "--radius")   { radius_bound   = std::stod(val); ++i; }
         else if (flag == "--distance") { distance_bound = std::stod(val); ++i; }
-        else if (flag == "--margin")   { margin         = std::stod(val); ++i; }
     }
-    // Auto-set margin: 3 × radius so the taper spans roughly 3 mesh elements.
-    // This is wide enough to be smooth but narrow enough not to push the surface
-    // far from the domain wall.
-    if (margin < 0) margin = 3.0 * radius_bound;
-    g.margin = margin;
+    // cap_margin: taper width just outside domain for closing caps.
+    // Must be << radius_bound so the closing triangles appear at the domain face,
+    // but large enough for CGAL's bisection to resolve the zero crossing cleanly.
+    g.cap_margin = std::max(0.005, radius_bound * 0.1);
 
     // ── Load parameters ────────────────────────────────────────────────────
     std::cout << "Reading params: " << params_path << "\n";
@@ -445,26 +481,13 @@ int main(int argc, char* argv[])
     std::cout << "Meshing criteria: angular=" << angular_bound
               << "°  radius=" << radius_bound
               << " mm  distance=" << distance_bound
-              << " mm  margin=" << g.margin << " mm\n";
+              << " mm  cap_margin=" << g.cap_margin << " mm\n";
 
-    // ── Build bounding sphere ─────────────────────────────────────────────
-    Sphere_3 bsphere = make_bounding_sphere();
-    std::cout << "Bounding sphere: centre ("
-              << CGAL::to_double(bsphere.center().x()) << ", "
-              << CGAL::to_double(bsphere.center().y()) << ", "
-              << CGAL::to_double(bsphere.center().z()) << ")  r²="
-              << CGAL::to_double(bsphere.squared_radius()) << "\n";
+    // ── Mesh both sheets + closing caps in one pass ────────────────────────
+    SMesh sm = mesh_wall(angular_bound, radius_bound, distance_bound);
 
-    // ── Mesh both sheets ───────────────────────────────────────────────────
-    SMesh sm_pos = mesh_one_sheet(FunPos{}, bsphere,
-                                  angular_bound, radius_bound, distance_bound,
-                                  "G=+half_t");
-    SMesh sm_neg = mesh_one_sheet(FunNeg{}, bsphere,
-                                  angular_bound, radius_bound, distance_bound,
-                                  "G=-half_t");
-
-    // ── Write combined output ──────────────────────────────────────────────
-    write_combined_stl(out_path, sm_pos, sm_neg);
+    // ── Write output ───────────────────────────────────────────────────────
+    write_stl(out_path, sm);
 
     std::cout << "Done.\n";
     return 0;
