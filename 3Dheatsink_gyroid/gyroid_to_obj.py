@@ -338,6 +338,15 @@ def build_octree_leaves(
             vtx = _newton_project(vtx, k_base, half_t, rbf_field, rot_matrix,
                                   h, sheet, cell_min, cell_max)
 
+            # Snap boundary-cell vertices to the domain face plane so the sheet
+            # mesh has an exact edge on each face — closing the gap to the cap.
+            for _ax, (_lo, _hi) in enumerate(
+                    [(xs[0], xs[-1]), (ys[0], ys[-1]), (zs[0], zs[-1])]):
+                if abs(cell_min[_ax] - float(_lo)) < 1e-9:
+                    vtx[_ax] = float(_lo)
+                elif abs(cell_max[_ax] - float(_hi)) < 1e-9:
+                    vtx[_ax] = float(_hi)
+
             vid = vertex_counter[0]
             vertex_counter[0] += 1
             leaves.append(OctreeCell(cell_min.copy(), cell_max.copy(), vtx, vid))
@@ -392,15 +401,30 @@ def build_octree_leaves(
 
 # ── Quad connectivity via spatial lookup ─────────────────────────────────────
 
-def build_quads(leaves: list[OctreeCell]) -> tuple[np.ndarray, list[list[int]]]:
+def build_quads(
+    leaves: list[OctreeCell],
+    k_base: float,
+    half_t: float,
+    rbf_field,
+    rot_matrix,
+    sheet: int,
+) -> tuple[np.ndarray, list[list[int]]]:
     """
-    For each axis-aligned face shared by two adjacent leaf cells,
-    find the four cells that share that face edge and emit a quad.
+    Dual-contouring quad connectivity with primal-edge sign-change gating.
 
-    For a uniform octree the rule is: two cells share an x-face when
-    cell A's x_max == cell B's x_min and their y,z extents overlap.
+    For each axis, find all groups of 4 leaf cells that form a 2×2 block at the
+    same face position.  For each group, evaluate sdf_sheet at the TWO endpoints
+    of the shared primal edge (the grid edge in the axis direction that the 4
+    cells surround).  A quad is emitted ONLY when those two endpoints have
+    opposite SDF signs — i.e. the primal edge actually crosses the isosurface.
 
-    We use a tolerance-based spatial hash on face centres.
+    This eliminates the "fence" artefacts that appear when cells on opposite
+    sides of the wall both straddle the surface but the primal edge between them
+    does not cross it.
+
+    Winding: [v0(o0_lo,o1_lo), v1(o0_hi,o1_lo), v2(o0_hi,o1_hi), v3(o0_lo,o1_hi)]
+    gives a +axis normal.  When the solid is on the face side (F_face < 0), the
+    order is reversed so the normal consistently points FROM solid TOWARD fluid.
 
     Returns:
         vertices  – (V, 3) float64 array of DC vertex positions
@@ -411,106 +435,85 @@ def build_quads(leaves: list[OctreeCell]) -> tuple[np.ndarray, list[list[int]]]:
 
     vertices = np.array([cell.vertex for cell in leaves])
 
-    # Build lookup: centre of each face → list of (leaf_index, face_axis)
-    # For each leaf and each of its 6 faces, key = (axis, face_coord, mid_other_a, mid_other_b)
-    # rounded to a tolerance based on leaf size.
-
-    # Determine typical leaf size for tolerance
     sizes = np.array([cell.max_pt - cell.min_pt for cell in leaves])
-    tol = sizes.min() * 0.01   # 1% of smallest cell
+    tol = sizes.min() * 0.01
 
     def _round(v: float) -> int:
         return int(round(v / tol))
 
-    # face_map: key → list of leaf indices (cells sharing that face)
-    # Key encodes axis + face position: for axis=0 (x-face), key=(0, x_val, y_mid, z_mid)
-    face_map: dict[tuple, list[int]] = {}
-
-    for idx, cell in enumerate(leaves):
-        cx = 0.5 * (cell.min_pt + cell.max_pt)
-        for axis in range(3):
-            for side in (cell.min_pt[axis], cell.max_pt[axis]):
-                other = [i for i in range(3) if i != axis]
-                key = (axis,
-                       _round(side),
-                       _round(cx[other[0]]),
-                       _round(cx[other[1]]))
-                face_map.setdefault(key, []).append(idx)
-
-    # For each face with exactly 2 cells: find the 4 cells around the shared edge.
-    # For uniform same-size cells, 2 cells sharing a face → directly make a quad
-    # from those 2 vertices + the 2 neighbours along the face's other two axes.
-    #
-    # More robustly: collect all faces shared by exactly 2 cells, then
-    # for each pair (A, B) sharing an x-face, find all pairs (C, D) sharing the
-    # same x-face at same x_val and adjacent y/z mid so that A,B,C,D form a ring.
-    #
-    # Simpler and correct for the uniform-at-leaf-level case:
-    # For each axis, group pairs by (axis, face_val, other_mid_a, other_mid_b).
-    # Four cells that tile a face in a 2×2 pattern form one quad.
-
     quads: list[list[int]] = []
     seen_quad_keys: set[frozenset] = set()
 
-    # For each axis, find the 2×2 blocks of adjacent cells
-    # Group leaves by the cell size at their level (cells of same size can form quads)
-    # We group cells by their half-extent along each transverse axis
-
     for axis in range(3):
         other = [i for i in range(3) if i != axis]
-        # Map each leaf to its face-normal position and transverse grid coords
-        # key2: (axis, face_val_rounded, other0_min_rounded, other1_min_rounded)
+
+        # Group cells by (axis, max_pt[axis] rounded, min_pt[other[0]] rounded,
+        #                                               min_pt[other[1]] rounded)
         face2: dict[tuple, list[int]] = {}
         for idx, cell in enumerate(leaves):
-            # Use max_pt face (the "right" face along axis)
-            fv = _round(cell.max_pt[axis])
+            fv     = _round(cell.max_pt[axis])
             o0_min = _round(cell.min_pt[other[0]])
             o1_min = _round(cell.min_pt[other[1]])
-            key2 = (axis, fv, o0_min, o1_min)
-            face2.setdefault(key2, []).append(idx)
+            face2.setdefault((axis, fv, o0_min, o1_min), []).append(idx)
 
-        # For each right face, find the matching left face of adjacent cell
+        # Collect all valid 2×2 blocks, deferring SDF evaluation for batch speed
+        # Each entry: (ids_ordered, p_inner, p_face)
+        candidates: list[tuple] = []
+
         for (ax, fv, o0_min, o1_min), right_ids in face2.items():
-            # The cell(s) whose left face matches this right face
-            left_key = (ax, fv, o0_min, o1_min)
-            # We need to find 4 cells that share the face:
-            # Right cells at (o0_min, o1_min) and (o0_min+s, o1_min),
-            # (o0_min, o1_min+s), (o0_min+s, o1_min+s)
-            # where s = cell size in other directions
-
             for r_idx in right_ids:
                 cell_r = leaves[r_idx]
                 s0 = _round(cell_r.max_pt[other[0]] - cell_r.min_pt[other[0]])
                 s1 = _round(cell_r.max_pt[other[1]] - cell_r.min_pt[other[1]])
 
-                # The 4 right-face cells that tile a quad
-                quad_right_keys = [
+                quad_keys = [
                     (ax, fv, o0_min,      o1_min),
                     (ax, fv, o0_min + s0, o1_min),
-                    (ax, fv, o0_min,      o1_min + s1),
                     (ax, fv, o0_min + s0, o1_min + s1),
+                    (ax, fv, o0_min,      o1_min + s1),
                 ]
-                quad_right_ids = []
-                for qk in quad_right_keys:
-                    ids = face2.get(qk, [])
-                    if len(ids) == 1:
-                        quad_right_ids.append(ids[0])
+                ids4 = []
+                for qk in quad_keys:
+                    qids = face2.get(qk, [])
+                    if len(qids) == 1:
+                        ids4.append(qids[0])
                     else:
                         break
                 else:
-                    if len(quad_right_ids) == 4:
-                        key_set = frozenset(quad_right_ids)
+                    if len(ids4) == 4:
+                        key_set = frozenset(ids4)
                         if key_set not in seen_quad_keys:
                             seen_quad_keys.add(key_set)
-                            # Consistent ordering: CCW when viewed from +axis
-                            # Order: (o0_min,o1_min), (o0+s,o1_min), (o0+s,o1+s), (o0,o1+s)
-                            ids_ordered = [
-                                face2[(ax, fv, o0_min,      o1_min)][0],
-                                face2[(ax, fv, o0_min + s0, o1_min)][0],
-                                face2[(ax, fv, o0_min + s0, o1_min + s1)][0],
-                                face2[(ax, fv, o0_min,      o1_min + s1)][0],
-                            ]
-                            quads.append(ids_ordered)
+
+                            # Primal edge: axis-aligned, passes through the shared
+                            # corner of the 4 cells.  The corner is at max_pt of
+                            # the (o0_min, o1_min) cell in the transverse axes.
+                            ref = leaves[ids4[0]]
+                            p_face  = ref.max_pt.copy()          # face side endpoint
+                            p_inner = ref.max_pt.copy()
+                            p_inner[axis] = ref.min_pt[axis]     # inner side endpoint
+
+                            candidates.append((ids4, p_inner, p_face))
+
+        if not candidates:
+            continue
+
+        # Batch-evaluate SDF at both primal edge endpoints
+        pts_inner = np.array([c[1] for c in candidates])
+        pts_face  = np.array([c[2] for c in candidates])
+        f_inner   = sdf_sheet(pts_inner, k_base, half_t, rbf_field, rot_matrix, sheet)
+        f_face    = sdf_sheet(pts_face,  k_base, half_t, rbf_field, rot_matrix, sheet)
+
+        for (ids4, _, _), fi, ff in zip(candidates, f_inner, f_face):
+            if float(fi) * float(ff) >= 0.0:
+                continue   # same sign → primal edge doesn't cross surface → skip
+
+            # Winding: [lo-lo, hi-lo, hi-hi, lo-hi] gives +axis normal.
+            # Flip when solid is on the face side so normal points from solid→fluid.
+            if float(fi) < 0.0:   # inner side is solid, outward = +axis
+                quads.append(ids4)
+            else:                  # face side is solid, outward = -axis
+                quads.append([ids4[0], ids4[3], ids4[2], ids4[1]])
 
     print(f"  Quads constructed: {len(quads):,}")
     return vertices, quads
@@ -604,21 +607,22 @@ def tangential_smooth(
 
 # ── OBJ writer ────────────────────────────────────────────────────────────────
 
-def write_obj(path: Path, vertices: np.ndarray, quads: list[list[int]]) -> None:
-    """Write quad mesh to Wavefront OBJ (1-indexed, f lines with 4 vertices)."""
+def write_obj(path: Path, vertices: np.ndarray, faces: list[list[int]]) -> None:
+    """Write mesh to Wavefront OBJ — supports quads (4 verts) and tris (3 verts)."""
     n_verts = len(vertices)
-    n_quads = len(quads)
+    n_q = sum(1 for f in faces if len(f) == 4)
+    n_t = sum(1 for f in faces if len(f) == 3)
     with open(path, 'w') as fh:
-        fh.write(f"# Gyroid quad mesh  –  {n_verts} vertices  {n_quads} quads\n")
+        fh.write(f"# Gyroid mesh  –  {n_verts} vertices, {n_q} quads, {n_t} tris\n")
         fh.write("# Generated by gyroid_to_obj.py\n\n")
         for v in vertices:
             fh.write(f"v {v[0]:.8g} {v[1]:.8g} {v[2]:.8g}\n")
         fh.write("\n")
-        for q in quads:
-            # OBJ uses 1-based indices
-            fh.write(f"f {q[0]+1} {q[1]+1} {q[2]+1} {q[3]+1}\n")
+        for f in faces:
+            fh.write("f " + " ".join(str(vi + 1) for vi in f) + "\n")
     size_mb = path.stat().st_size / 1e6
-    print(f"  Wrote {n_verts:,} vertices, {n_quads:,} quads  ({size_mb:.1f} MB)  →  {path}")
+    print(f"  Wrote {n_verts:,} verts, {n_q:,} quads, {n_t:,} tris  "
+          f"({size_mb:.1f} MB)  →  {path}")
 
 
 # ── YAML config reader ────────────────────────────────────────────────────────
@@ -749,32 +753,47 @@ def close_open_loops(
     cap_res: float,
 ) -> tuple[np.ndarray, list[list[int]]]:
     """
-    Find every open boundary loop on the mesh and close it.
+    Find every open boundary loop and close it with a constrained triangulation.
 
-    Face loops (loop centroid within 2*cap_res of a domain face):
-      • Snap all loop vertices to lie exactly on the face plane.
-      • Fill the solid cross-section on that face (|G| < half_t) with a regular
-        grid of flat quads, using the snapped loop vertices as anchor nodes so
-        the cap shares vertices with the mesh boundary.
+    Face loops (average vertex distance to a domain face < cap_res * 3):
+      • Project loop vertices exactly onto the face plane (they are already there
+        after DC boundary snapping — this is a safety pass).
+      • Triangulate using Delaunay on the 2-D face coordinates.
+      • Keep only triangles whose centroid satisfies |G| - half_t < 0 (inside the
+        thick gyroid solid) — this selects the wall cross-section and rejects the
+        open fluid channel regions automatically without needing a grid.
+      • Combine adjacent triangle pairs into quads; remaining triangles stay as tris.
+      • The patch shares its boundary edges with the sheet mesh (same vertices).
 
-    Interior loops (not near any face):
-      • Close with a centroid + edge-midpoint fan, producing N all-quad patches.
+    Interior loops (numerical/topology artefacts not near any face):
+      • Project to the loop's best-fit plane and triangulate the same way.
+      • No G check — just fill the hole.
 
-    All 6 faces are processed; --open-faces is not considered here.
+    Both face and interior patches are appended to all_quads (which may now contain
+    3-vertex triangle entries as well as 4-vertex quads).
     """
+    from scipy.spatial import Delaunay
+
     all_verts: list[np.ndarray] = list(vertices)
-    all_quads: list[list[int]]  = list(quads)
+    all_faces:  list[list[int]]  = list(quads)   # renamed; may grow with tris
+
+    # Live edge-usage count — updated as cap patches are added so we can detect
+    # and skip any triangle/quad edge that would create a count > 2 situation.
+    live_edge: dict[tuple[int,int], int] = {}
+    for face in all_faces:
+        n = len(face)
+        for a in range(n):
+            e = (min(face[a], face[(a+1)%n]), max(face[a], face[(a+1)%n]))
+            live_edge[e] = live_edge.get(e, 0) + 1
 
     loops = find_boundary_loops(quads)
     print(f"  Found {len(loops):,} open boundary loops")
 
-    face_tol = cap_res * 2.0
+    face_tol = cap_res * 3.0
 
     # ── Classify loops ────────────────────────────────────────────────────────
-    # Group by nearest face; unclassified → interior
     face_groups: dict[str, list[list[int]]] = {}
     interior_loops: list[list[int]] = []
-
     for loop in loops:
         lv = np.array([all_verts[i] for i in loop])
         best_name, best_d = None, float('inf')
@@ -788,90 +807,182 @@ def close_open_loops(
         else:
             interior_loops.append(loop)
 
-    n_face_loops = sum(len(v) for v in face_groups.values())
-    print(f"  Classification: {n_face_loops:,} face loops "
-          f"({len(face_groups)} faces), {len(interior_loops):,} interior loops")
+    n_fl = sum(len(v) for v in face_groups.values())
+    print(f"  Classification: {n_fl:,} face loops "
+          f"({len(face_groups)} faces), {len(interior_loops):,} interior")
 
-    # ── Close face loops (per face, all loops together) ───────────────────────
+    # ── Shared helpers ────────────────────────────────────────────────────────
+
+    def _pip(px: float, py: float, poly: np.ndarray) -> bool:
+        """Ray-casting point-in-polygon test (poly shape: (N,2))."""
+        inside = False
+        n = len(poly)
+        j = n - 1
+        for i in range(n):
+            xi, yi = poly[i, 0], poly[i, 1]
+            xj, yj = poly[j, 0], poly[j, 1]
+            if ((yi > py) != (yj > py)) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
+                inside = not inside
+            j = i
+        return inside
+
+    def _face_edges(f: list[int]):
+        n = len(f)
+        return [(min(f[a], f[(a+1)%n]), max(f[a], f[(a+1)%n])) for a in range(n)]
+
+    # Levi-Civita sign of the triplet (a0, a1, faxis) — used to compute
+    # whether the scipy Delaunay CCW winding already matches the outward face
+    # normal, or needs to be reversed.
+    #   (e_{a0} × e_{a1}) · e_{faxis} = ε_{a0, a1, faxis}
+    # Even permutation → +1 (CCW = outward for +axis faces).
+    # Odd  permutation → −1 (CCW = inward  for +axis faces).
+    _PERM_SIGN = {
+        (0,1,2):+1, (1,2,0):+1, (2,0,1):+1,
+        (0,2,1):-1, (2,1,0):-1, (1,0,2):-1,
+    }
+
+    def _try_add(face: list[int]) -> bool:
+        """Emit face only if no edge exceeds count 2; update live_edge."""
+        edges = _face_edges(face)
+        if any(live_edge.get(e, 0) >= 2 for e in edges):
+            return False
+        all_faces.append(face)
+        for e in edges:
+            live_edge[e] = live_edge.get(e, 0) + 1
+        return True
+
+    def _emit_valid(valid: list[list[int]], need_flip: bool) -> None:
+        """Pair adjacent kept triangles into quads; emit remaining as tris."""
+        edge_to_tri: dict[tuple[int,int], list[int]] = {}
+        for ti, t in enumerate(valid):
+            for a in range(3):
+                e = (min(t[a], t[(a+1)%3]), max(t[a], t[(a+1)%3]))
+                edge_to_tri.setdefault(e, []).append(ti)
+
+        used: set[int] = set()
+        for e, tis in edge_to_tri.items():
+            if len(tis) != 2 or tis[0] in used or tis[1] in used:
+                continue
+            ta, tb = valid[tis[0]], valid[tis[1]]
+            v0, v1 = e
+            oi = next(v for v in ta if v != v0 and v != v1)
+            oj = next(v for v in tb if v != v0 and v != v1)
+            quad = [oi, v0, oj, v1]
+            if need_flip:
+                quad = [quad[0], quad[3], quad[2], quad[1]]
+            if _try_add(quad):
+                used.add(tis[0]);  used.add(tis[1])
+
+        for ti, t in enumerate(valid):
+            if ti in used:
+                continue
+            tri = list(t)
+            if need_flip:
+                tri = [tri[0], tri[2], tri[1]]
+            _try_add(tri)
+
+    # ── Per-loop closure (face loops and interior loops) ─────────────────────
+    # For each open boundary loop: evaluate |G| at the loop's centroid ONCE.
+    # If the centroid is inside the thick gyroid solid (|G| < half_t) → the loop
+    # bounds a wall cross-section → triangulate and keep the whole patch.
+    # If the centroid is in the fluid (|G| ≥ half_t) → reject the entire patch.
+    # This avoids per-triangle checks and naturally handles both face and interior
+    # loops with a single consistent rule.
+
+    def _triangulate_loop(loop_vids: list[int],
+                          pts2d: np.ndarray,
+                          need_flip: bool) -> int:
+        """
+        Delaunay-triangulate a loop (PIP filter), pair triangles into quads,
+        emit via _try_add.  Returns the number of faces added.
+        """
+        N = len(loop_vids)
+        if N < 3:
+            return 0
+        try:
+            tri_obj = Delaunay(pts2d)
+        except Exception:
+            return 0
+
+        poly = pts2d
+        valid: list[list[int]] = []
+        for s in tri_obj.simplices:
+            cx = float(pts2d[s, 0].mean())
+            cy = float(pts2d[s, 1].mean())
+            if _pip(cx, cy, poly):
+                valid.append([loop_vids[s[0]], loop_vids[s[1]], loop_vids[s[2]]])
+
+        n_before = len(all_faces)
+        _emit_valid(valid, need_flip)
+        return len(all_faces) - n_before
+
+    # Face loops
     for fname, face_loops in face_groups.items():
         faxis, (a0, a1), normal_sign = _FACE_INFO[fname]
         fval = float(domain_min[faxis] if normal_sign < 0 else domain_max[faxis])
 
-        # Step 1: snap loop vertices to face plane
+        eps      = _PERM_SIGN[(a0, a1, faxis)]
+        need_flip = (eps * normal_sign < 0)
+
+        n_kept = n_reject = 0
         for loop in face_loops:
+            # Snap loop vertices to face plane
             for idx in loop:
                 v = all_verts[idx].copy()
                 v[faxis] = fval
                 all_verts[idx] = v
 
-        # Step 2: build 2-D grid on this face, evaluate |G| - half_t
-        lim0 = (float(domain_min[a0]), float(domain_max[a0]))
-        lim1 = (float(domain_min[a1]), float(domain_max[a1]))
-        ns0 = max(3, int(round((lim0[1] - lim0[0]) / cap_res)) + 1)
-        ns1 = max(3, int(round((lim1[1] - lim1[0]) / cap_res)) + 1)
-        s0  = np.linspace(lim0[0], lim0[1], ns0)
-        s1  = np.linspace(lim1[0], lim1[1], ns1)
+            # Per-loop centroid G check
+            lv = np.array([all_verts[i] for i in loop])
+            cx2, cy2 = float(lv[:, a0].mean()), float(lv[:, a1].mean())
+            pt3 = np.zeros(3)
+            pt3[faxis] = fval;  pt3[a0] = cx2;  pt3[a1] = cy2
+            G = float(gyroid_G(pt3[np.newaxis], k_base, rbf_field, rot_matrix)[0])
 
-        S0, S1 = np.meshgrid(s0, s1, indexing='ij')
-        pts = np.zeros((ns0 * ns1, 3))
-        pts[:, faxis] = fval
-        pts[:, a0]    = S0.ravel()
-        pts[:, a1]    = S1.ravel()
+            if abs(G) - half_t >= 0.0:
+                n_reject += 1
+                continue  # loop centroid in fluid → reject entire patch
 
-        G_vals = gyroid_G(pts, k_base, rbf_field, rot_matrix)
-        F_grid = (np.abs(G_vals) - half_t).reshape(ns0, ns1)
-        pts_grid = pts.reshape(ns0, ns1, 3)
+            pts2d = lv[:, [a0, a1]]
+            added = _triangulate_loop(loop, pts2d, need_flip)
+            if added:
+                n_kept += 1
 
-        # Step 3: emit flat cap quads using independent grid vertices.
-        # We do NOT snap grid nodes to loop vertices: doing so would cause
-        # non-manifold edges where a shared cap–sheet edge appears 3× (once in
-        # the sheet interior, twice from adjacent cap cells).  Instead, the
-        # snapped loop and the cap grid are coplanar; the boolean merge handles
-        # the combination.
-        cap_base   = len(all_verts)
-        node_local: dict[tuple[int,int], int] = {}
+        print(f"  Face {fname:4s}: {len(face_loops):,} loops → "
+              f"{n_kept} kept, {n_reject} rejected  (flip={need_flip})")
 
-        def _vid(i: int, j: int) -> int:
-            if (i, j) not in node_local:
-                node_local[(i, j)] = cap_base + len(node_local)
-                all_verts.append(pts_grid[i, j].copy())
-            return node_local[(i, j)]
-
-        n_cap = 0
-        for i in range(ns0 - 1):
-            for j in range(ns1 - 1):
-                f_avg = 0.25*(F_grid[i,j]+F_grid[i+1,j]+F_grid[i+1,j+1]+F_grid[i,j+1])
-                if f_avg >= 0.0:
-                    continue
-                v00=_vid(i,j); v10=_vid(i+1,j); v11=_vid(i+1,j+1); v01=_vid(i,j+1)
-                if normal_sign > 0:
-                    all_quads.append([v00, v10, v11, v01])
-                else:
-                    all_quads.append([v00, v01, v11, v10])
-                n_cap += 1
-
-        n_seam = sum(len(l) for l in face_loops)
-        print(f"  Face {fname:4s}: {len(face_loops):,} loops, "
-              f"{n_seam:,} snapped verts, {n_cap:,} cap quads")
-
-    # ── Close interior loops with centroid + midpoint all-quad fan ────────────
+    # Interior loops — same per-loop centroid check
+    n_kept = n_reject = 0
     for loop in interior_loops:
-        N = len(loop)
-        c_pos = np.mean([all_verts[i] for i in loop], axis=0)
-        c_idx = len(all_verts);  all_verts.append(c_pos)
+        if len(loop) < 3:
+            continue
+        lv = np.array([all_verts[i] for i in loop])
 
-        mid_ids: list[int] = []
-        for i in range(N):
-            m = 0.5 * (all_verts[loop[i]] + all_verts[loop[(i + 1) % N]])
-            mid_ids.append(len(all_verts));  all_verts.append(m)
+        # Per-loop centroid G check in 3D
+        centroid_3d = lv.mean(axis=0)
+        G = float(gyroid_G(centroid_3d[np.newaxis], k_base, rbf_field, rot_matrix)[0])
+        if abs(G) - half_t >= 0.0:
+            n_reject += 1
+            continue
 
-        for i in range(N):
-            all_quads.append([loop[i], mid_ids[i], c_idx, mid_ids[(i - 1) % N]])
+        # Best-fit plane projection
+        center = centroid_3d
+        _, _, vt = np.linalg.svd(lv - center)
+        nrm = vt[-1]
+        ref = np.array([1., 0., 0.]) if abs(nrm[0]) < 0.9 else np.array([0., 1., 0.])
+        bx  = np.cross(nrm, ref);  bx /= np.linalg.norm(bx)
+        by  = np.cross(nrm, bx);   by /= np.linalg.norm(by)
+        pts2d = np.column_stack([(lv - center) @ bx, (lv - center) @ by])
+
+        added = _triangulate_loop(loop, pts2d, need_flip=False)
+        if added:
+            n_kept += 1
 
     if interior_loops:
-        print(f"  Interior: {len(interior_loops):,} loops closed with centroid fan")
+        print(f"  Interior: {n_kept} kept, {n_reject} rejected "
+              f"(of {len(interior_loops)} loops)")
 
-    return np.array(all_verts), all_quads
+    return np.array(all_verts), all_faces
 
 
 
@@ -1003,7 +1114,7 @@ def _process_sheet(
             return np.empty((0, 3)), [], buf.getvalue()
 
         print(f"\n  Building quad connectivity …")
-        verts, quads = build_quads(leaves)
+        verts, quads = build_quads(leaves, k_base, half_t, rbf_field, rot_matrix, sheet)
 
         if not quads:
             print(f"  WARNING: sheet {sheet:+d}: no quads generated.")
@@ -1161,7 +1272,12 @@ def main() -> None:
     # Face loops: vertices snapped to face plane, solid cross-section (|G|<half_t)
     # filled with flat quads sharing the snapped boundary vertices.
     # Interior loops: closed with a centroid + midpoint all-quad fan.
-    cap_res = args.cap_res if args.cap_res is not None else args.res
+    # Default cap resolution = leaf cell size (coarse_res / 2^depth).
+    # Using the coarse resolution leaves 1–2 large cap quads per gyroid
+    # cross-section, which appear as isolated white squares.  Matching the
+    # leaf size ensures the cap fills each cross-section with many fine quads.
+    leaf_size = args.res / (2 ** args.depth)
+    cap_res = args.cap_res if args.cap_res is not None else leaf_size
     print(f"\n  Closing open boundary loops (cap_res={cap_res:.3f} mm) …")
     vertices, all_quads = close_open_loops(
         vertices, all_quads,
