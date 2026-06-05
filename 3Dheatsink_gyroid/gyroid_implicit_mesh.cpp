@@ -59,6 +59,12 @@
 #include <CGAL/IO/facets_in_complex_2_to_triangle_mesh.h>
 #include <CGAL/Surface_mesh.h>
 #include <CGAL/IO/STL.h>
+#include <CGAL/IO/OBJ.h>
+#include <CGAL/Subdivision_method_3/subdivision_methods_3.h>
+#include <CGAL/Polygon_mesh_processing/repair_polygon_soup.h>
+#include <CGAL/Polygon_mesh_processing/orient_polygon_soup.h>
+#include <CGAL/Polygon_mesh_processing/polygon_soup_to_polygon_mesh.h>
+#include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
 
 #include <algorithm>
 #include <array>
@@ -400,7 +406,7 @@ static SMesh mesh_wall(double angular_bound,
     return sm;
 }
 
-// ── Write Surface_mesh as binary STL ─────────────────────────────────────────
+// ── Write binary STL ──────────────────────────────────────────────────────────
 
 static void write_stl(const std::string& out_path, const SMesh& sm)
 {
@@ -419,13 +425,90 @@ static void write_stl(const std::string& out_path, const SMesh& sm)
             (std::size_t)sm.target(sm.next(sm.next(h))).idx()
         });
     }
-
     std::cout << "Writing " << out_path << " — "
               << points.size() << " vertices, "
               << triangles.size() << " triangles\n";
-
     if (!CGAL::IO::write_STL(out_path, points, triangles,
                               CGAL::parameters::use_binary_mode(true)))
+        std::cerr << "ERROR: cannot write " << out_path << "\n";
+}
+
+// ── Catmull-Clark subdivision → pure quad mesh, write OBJ ────────────────────
+//
+// Applied DIRECTLY to the CGAL-generated curvature-adaptive triangle mesh,
+// WITHOUT isotropic remeshing.  This preserves the variable triangle density:
+//   - small triangles in curved gyroid regions → small quads (fine detail)
+//   - large triangles in flat regions         → large quads (efficient)
+//
+// One CC iteration: each triangle → 3 quads, output is 100% quads.
+// Isotropic remeshing (used by stl_to_quad_cgal for arbitrary STL inputs)
+// destroys CGAL's curvature-adaptive density and must NOT be applied here.
+
+static void catmullclark_and_write_obj(const SMesh& sm_raw,
+                                       int   iterations,
+                                       const std::string& out_path)
+{
+    namespace PMP = CGAL::Polygon_mesh_processing;
+
+    // ── Repair: Non_manifold_tag can produce non-manifold edges/vertices.
+    //    CatmullClark_subdivision requires a valid manifold polygon mesh.
+    //    Round-trip through polygon soup to fix orientation and remove duplicates.
+    std::cout << "Repairing mesh for Catmull-Clark …\n" << std::flush;
+
+    // Extract as polygon soup
+    std::vector<Point_3>                soup_pts;
+    std::vector<std::array<std::size_t,3>> soup_tri;
+    soup_pts.reserve(sm_raw.num_vertices());
+    soup_tri.reserve(sm_raw.num_faces());
+
+    for (auto v : sm_raw.vertices())
+        soup_pts.push_back(sm_raw.point(v));
+    for (auto f : sm_raw.faces()) {
+        auto h = sm_raw.halfedge(f);
+        soup_tri.push_back({
+            (std::size_t)sm_raw.target(h).idx(),
+            (std::size_t)sm_raw.target(sm_raw.next(h)).idx(),
+            (std::size_t)sm_raw.target(sm_raw.next(sm_raw.next(h))).idx()
+        });
+    }
+
+    PMP::repair_polygon_soup(soup_pts, soup_tri);
+    PMP::orient_polygon_soup(soup_pts, soup_tri);
+
+    SMesh sm;
+    if (PMP::is_polygon_soup_a_polygon_mesh(soup_tri))
+        PMP::polygon_soup_to_polygon_mesh(soup_pts, soup_tri, sm);
+    else {
+        std::cerr << "  WARNING: mesh is non-manifold after repair; "
+                     "attempting to build anyway\n";
+        PMP::polygon_soup_to_polygon_mesh(soup_pts, soup_tri, sm);
+    }
+
+    // Remove isolated vertices and degenerate faces left by the soup repair
+    { std::vector<SMesh::Vertex_index> iso;
+      for (auto v : sm.vertices()) if (sm.is_isolated(v)) iso.push_back(v);
+      for (auto v : iso) sm.remove_vertex(v); }
+    PMP::remove_degenerate_faces(sm);
+    sm.collect_garbage();
+
+    std::cout << "  After repair: " << sm.num_vertices() << " verts, "
+              << sm.num_faces() << " faces\n";
+
+    std::cout << "Catmull-Clark subdivision (" << iterations << " iter) …\n" << std::flush;
+    CGAL::Subdivision_method_3::CatmullClark_subdivision(
+        sm, CGAL::parameters::number_of_iterations(iterations));
+
+    std::size_t n_quad = 0, n_other = 0;
+    for (auto f : sm.faces()) {
+        std::size_t deg = 0;
+        for (auto v : CGAL::vertices_around_face(sm.halfedge(f), sm)) { (void)v; ++deg; }
+        (deg == 4) ? ++n_quad : ++n_other;
+    }
+    std::cout << "  " << sm.num_vertices() << " vertices, "
+              << n_quad << " quads, " << n_other << " other\n";
+
+    std::cout << "Writing " << out_path << " …\n";
+    if (!CGAL::IO::write_OBJ(out_path, sm))
         std::cerr << "ERROR: cannot write " << out_path << "\n";
 }
 
@@ -436,10 +519,15 @@ int main(int argc, char* argv[])
     if (argc < 3)
     {
         std::cerr << "Usage: " << argv[0]
-                  << " <params.bin> <output.stl>"
+                  << " <params.bin> <output>"
                   << " [--angular  A]"
                   << " [--radius   R]"
-                  << " [--distance D]\n";
+                  << " [--distance D]"
+                  << " [--quad]"
+                  << " [--quad-iters N]\n"
+                  << "  Without --quad: output is binary STL (triangle mesh)\n"
+                  << "  With    --quad: Catmull-Clark subdivision applied;\n"
+                  << "                 output is OBJ (pure quad mesh, 3×faces)\n";
         return 1;
     }
 
@@ -449,17 +537,22 @@ int main(int argc, char* argv[])
     double angular_bound  = 30.0;
     double radius_bound   = 0.15;
     double distance_bound = 0.07;
+    bool   do_quad        = false;
+    int    quad_iters     = 1;
 
-    for (int i = 3; i < argc - 1; ++i)
+    for (int i = 3; i < argc; ++i)
     {
-        std::string flag(argv[i]), val(argv[i+1]);
-        if      (flag == "--angular")  { angular_bound  = std::stod(val); ++i; }
-        else if (flag == "--radius")   { radius_bound   = std::stod(val); ++i; }
-        else if (flag == "--distance") { distance_bound = std::stod(val); ++i; }
+        std::string flag(argv[i]);
+        if (flag == "--quad") { do_quad = true; }
+        else if (i + 1 < argc) {
+            std::string val(argv[i+1]);
+            if      (flag == "--angular")    { angular_bound  = std::stod(val); ++i; }
+            else if (flag == "--radius")     { radius_bound   = std::stod(val); ++i; }
+            else if (flag == "--distance")   { distance_bound = std::stod(val); ++i; }
+            else if (flag == "--quad-iters") { quad_iters     = std::stoi(val); ++i; }
+        }
     }
-    // cap_margin: taper width just outside domain for closing caps.
-    // Must be << radius_bound so the closing triangles appear at the domain face,
-    // but large enough for CGAL's bisection to resolve the zero crossing cleanly.
+
     g.cap_margin = std::max(0.005, radius_bound * 0.1);
 
     // ── Load parameters ────────────────────────────────────────────────────
@@ -482,12 +575,18 @@ int main(int argc, char* argv[])
               << "°  radius=" << radius_bound
               << " mm  distance=" << distance_bound
               << " mm  cap_margin=" << g.cap_margin << " mm\n";
+    if (do_quad)
+        std::cout << "Quad output: Catmull-Clark " << quad_iters
+                  << " iter(s) → OBJ (no isotropic remeshing)\n";
 
     // ── Mesh both sheets + closing caps in one pass ────────────────────────
     SMesh sm = mesh_wall(angular_bound, radius_bound, distance_bound);
 
     // ── Write output ───────────────────────────────────────────────────────
-    write_stl(out_path, sm);
+    if (do_quad)
+        catmullclark_and_write_obj(sm, quad_iters, out_path);
+    else
+        write_stl(out_path, sm);
 
     std::cout << "Done.\n";
     return 0;

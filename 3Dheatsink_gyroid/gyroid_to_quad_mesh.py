@@ -193,18 +193,16 @@ def main() -> None:
                              'refinement threshold')
     # --margin removed: cap_margin is now auto-derived from --radius in the C++ binary
     # Quad conversion
-    parser.add_argument('--no-quad',  action='store_true',
-                        help='Skip Catmull-Clark quad conversion; output STL only')
-    parser.add_argument('--target-faces', type=int, default=50_000,
-                        dest='target_faces',
-                        help='Faces after GH simplification (before Catmull-Clark)')
-    parser.add_argument('--coarse-faces', type=int, default=500_000,
-                        dest='coarse_faces')
+    parser.add_argument('--no-quad',    action='store_true',
+                        help='Output triangle STL only; skip Catmull-Clark')
+    parser.add_argument('--quad-iters', type=int, default=1, dest='quad_iters',
+                        help='Catmull-Clark iterations (default 1 → 3× faces)')
     args = parser.parse_args()
 
     ctrl_path  = Path(args.ctrl)
     out_path   = Path(args.out)
-    stl_path   = out_path.with_suffix('.stl')   # intermediate triangle mesh
+    # Intermediate STL (triangle mesh from CGAL); quad OBJ is the final output
+    stl_path   = out_path.with_suffix('.stl')
 
     k_base = 2.0 * math.pi / args.unit
     sqrt3  = math.sqrt(3)
@@ -267,67 +265,40 @@ def main() -> None:
     _compile(CPP_SRC_MESH, CPP_BIN_MESH)
 
     # ── Run CGAL mesher ───────────────────────────────────────────────────────
+    # When --quad: Catmull-Clark runs INSIDE gyroid_implicit_mesh, applied
+    # directly to the curvature-adaptive CGAL triangle mesh, WITHOUT isotropic
+    # remeshing.  This preserves CGAL's variable triangle density:
+    #   • small triangles in curved regions  → small quads (fine detail)
+    #   • large triangles in flat regions    → large quads (efficient)
+    # stl_to_quad_cgal is NOT used here — it applies isotropic remeshing which
+    # destroys CGAL's curvature adaptation and makes the result look blocky.
+
     print(f"\n  Running CGAL implicit surface mesher …")
+    final_path = stl_path if args.no_quad else out_path
+
     cmd_mesh = [
         str(CPP_BIN_MESH),
         str(PARAMS_FILE),
-        str(stl_path),
+        str(final_path),
         "--angular",  str(args.angular),
         "--radius",   str(args.radius),
         "--distance", str(args.distance),
     ]
+    if not args.no_quad:
+        cmd_mesh += ["--quad", "--quad-iters", str(args.quad_iters)]
+
     print(f"  {' '.join(cmd_mesh)}\n")
     t0 = time.time()
     r = subprocess.run(cmd_mesh, text=True)
     if r.returncode != 0:
         sys.exit(f"ERROR: CGAL mesher exited with code {r.returncode}")
     elapsed = time.time() - t0
-    stl_mb = stl_path.stat().st_size / 1e6
-    print(f"\n  Triangle STL: {stl_path.name}  ({stl_mb:.1f} MB)  [{elapsed:.1f}s]")
 
-    # ── Quad conversion ───────────────────────────────────────────────────────
-    if args.no_quad:
-        print(f"\n  Skipping quad conversion (--no-quad).  Output: {stl_path}")
-        return
-
-    print(f"\n  Converting to quad mesh via stl_to_quad_cgal …")
-    _compile(CPP_SRC_QUAD, CPP_BIN_QUAD)
-
-    # Derive isotropic-remesh edge length from the CGAL circumradius bound.
-    # For equilateral triangles: edge = circumradius × √3.
-    # Expressing as a % of the bbox diagonal keeps the parameter dimensionless.
-    # This ensures that a finer CGAL mesh (small --radius) stays fine through
-    # the remeshing step instead of being coarsened to the old fixed 1.5%.
-    bbox_diag = math.sqrt(
-        (args.xmax - args.xmin)**2 +
-        (args.ymax - args.ymin)**2 +
-        (args.zmax - args.zmin)**2)
-    remesh_edge_mm  = args.radius * math.sqrt(3)   # edge ≈ circumradius × √3
-    remesh_edge_pct = max(0.1, min(3.0,            # clamp to sane range
-                          remesh_edge_mm / bbox_diag * 100))
-
-    print(f"  Remesh edge: {remesh_edge_mm:.3f} mm  ({remesh_edge_pct:.2f}% of diag)")
-
-    cmd_quad = [
-        str(CPP_BIN_QUAD),
-        str(stl_path),
-        str(out_path),
-        "--target-faces",    str(args.target_faces),
-        "--coarse-faces",    str(args.coarse_faces),
-        "--remesh-edge-pct", f"{remesh_edge_pct:.4f}",
-        "--curv-pin-percentile", "90",
-    ]
-    print(f"  {' '.join(cmd_quad)}\n")
-    t0 = time.time()
-    r = subprocess.run(cmd_quad, text=True)
-    if r.returncode != 0:
-        sys.exit(f"ERROR: quad converter exited with code {r.returncode}")
-    elapsed = time.time() - t0
-
-    if out_path.exists():
-        obj_mb = out_path.stat().st_size / 1e6
-        print(f"\n  Quad OBJ: {out_path.name}  ({obj_mb:.1f} MB)  [{elapsed:.1f}s]")
-    print(f"\n  Done.  Output: {out_path}")
+    if final_path.exists():
+        size_mb = final_path.stat().st_size / 1e6
+        label   = "Triangle STL" if args.no_quad else "Quad OBJ"
+        print(f"\n  {label}: {final_path.name}  ({size_mb:.1f} MB)  [{elapsed:.1f}s]")
+    print(f"\n  Done.  Output: {final_path}")
 
 
 if __name__ == '__main__':
