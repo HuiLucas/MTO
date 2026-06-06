@@ -74,6 +74,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ── CGAL types ────────────────────────────────────────────────────────────────
@@ -406,6 +407,59 @@ static SMesh mesh_wall(double angular_bound,
     return sm;
 }
 
+// ── Shared soup-repair step ───────────────────────────────────────────────────
+//
+// make_surface_mesh with Non_manifold_tag can produce non-manifold edges.
+// Round-trip through the polygon soup API to orient and deduplicate.
+// Used by both the QuadriFlow (triangle OBJ) and Catmull-Clark (quad OBJ) paths.
+
+static SMesh repair_mesh(const SMesh& sm_raw)
+{
+    namespace PMP = CGAL::Polygon_mesh_processing;
+
+    std::vector<Point_3>                         soup_pts;
+    std::vector<std::array<std::size_t, 3>>      soup_tri;
+    soup_pts.reserve(sm_raw.num_vertices());
+    soup_tri.reserve(sm_raw.num_faces());
+
+    for (auto v : sm_raw.vertices())
+        soup_pts.push_back(sm_raw.point(v));
+    for (auto f : sm_raw.faces()) {
+        auto h = sm_raw.halfedge(f);
+        soup_tri.push_back({
+            (std::size_t)sm_raw.target(h).idx(),
+            (std::size_t)sm_raw.target(sm_raw.next(h)).idx(),
+            (std::size_t)sm_raw.target(sm_raw.next(sm_raw.next(h))).idx()
+        });
+    }
+
+    PMP::repair_polygon_soup(soup_pts, soup_tri);
+    PMP::orient_polygon_soup(soup_pts, soup_tri);
+
+    SMesh sm;
+    PMP::polygon_soup_to_polygon_mesh(soup_pts, soup_tri, sm);
+
+    { std::vector<SMesh::Vertex_index> iso;
+      for (auto v : sm.vertices()) if (sm.is_isolated(v)) iso.push_back(v);
+      for (auto v : iso) sm.remove_vertex(v); }
+    PMP::remove_degenerate_faces(sm);
+    sm.collect_garbage();
+    return sm;
+}
+
+// ── Write repaired triangle mesh as OBJ (input for QuadriFlow) ───────────────
+
+static void repair_and_write_obj(const SMesh& sm_raw, const std::string& out_path)
+{
+    std::cout << "Repairing mesh …\n" << std::flush;
+    SMesh sm = repair_mesh(sm_raw);
+    std::cout << "  " << sm.num_vertices() << " verts, "
+              << sm.num_faces() << " faces\n";
+    std::cout << "Writing triangle OBJ: " << out_path << "\n";
+    if (!CGAL::IO::write_OBJ(out_path, sm))
+        std::cerr << "ERROR: cannot write " << out_path << "\n";
+}
+
 // ── Write binary STL ──────────────────────────────────────────────────────────
 
 static void write_stl(const std::string& out_path, const SMesh& sm)
@@ -433,6 +487,125 @@ static void write_stl(const std::string& out_path, const SMesh& sm)
         std::cerr << "ERROR: cannot write " << out_path << "\n";
 }
 
+// ── Face classification + split-OBJ writer ───────────────────────────────────
+
+enum FaceKind { SIDES = 0, PLUS_SHEET = 1, MINUS_SHEET = 2 };
+
+static FaceKind classify_face(const SMesh& sm, SMesh::Face_index f)
+{
+    // Compute centroid
+    auto h  = sm.halfedge(f);
+    auto p0 = sm.point(sm.target(h));
+    auto p1 = sm.point(sm.target(sm.next(h)));
+    auto p2 = sm.point(sm.target(sm.next(sm.next(h))));
+    double cx = (CGAL::to_double(p0.x()) + CGAL::to_double(p1.x()) + CGAL::to_double(p2.x())) / 3.0;
+    double cy = (CGAL::to_double(p0.y()) + CGAL::to_double(p1.y()) + CGAL::to_double(p2.y())) / 3.0;
+    double cz = (CGAL::to_double(p0.z()) + CGAL::to_double(p1.z()) + CGAL::to_double(p2.z())) / 3.0;
+
+    double margin = 2.5 * g.cap_margin;
+    bool near_box = (cx - g.xmin < margin || g.xmax - cx < margin ||
+                     cy - g.ymin < margin || g.ymax - cy < margin ||
+                     cz - g.zmin < margin || g.zmax - cz < margin);
+
+    if (near_box) {
+        // Compute face normal via cross product
+        double ax = CGAL::to_double(p1.x() - p0.x());
+        double ay = CGAL::to_double(p1.y() - p0.y());
+        double az = CGAL::to_double(p1.z() - p0.z());
+        double bx = CGAL::to_double(p2.x() - p0.x());
+        double by = CGAL::to_double(p2.y() - p0.y());
+        double bz = CGAL::to_double(p2.z() - p0.z());
+        double nx = ay*bz - az*by;
+        double ny = az*bx - ax*bz;
+        double nz = ax*by - ay*bx;
+        double len = std::sqrt(nx*nx + ny*ny + nz*nz);
+        if (len > 1e-12) {
+            nx /= len; ny /= len; nz /= len;
+            double maxcomp = std::max({std::abs(nx), std::abs(ny), std::abs(nz)});
+            if (maxcomp > 0.6)
+                return SIDES;
+        }
+    }
+
+    return gyroid_G(cx, cy, cz) >= 0.0 ? PLUS_SHEET : MINUS_SHEET;
+}
+
+static void write_split_obj(const SMesh& sm, const std::string& base_path)
+{
+    // Derive stem: strip .obj if present
+    std::string stem = base_path;
+    if (stem.size() >= 4 && stem.substr(stem.size()-4) == ".obj")
+        stem = stem.substr(0, stem.size()-4);
+    // Strip trailing _tri or _all suffix if present so we get a clean stem
+    for (const std::string& suf : {"_tri", "_all"}) {
+        if (stem.size() > suf.size() &&
+            stem.substr(stem.size()-suf.size()) == suf)
+            stem = stem.substr(0, stem.size()-suf.size());
+    }
+
+    std::string paths[3] = { stem+"_sides.obj", stem+"_plus.obj", stem+"_minus.obj" };
+
+    // Classify all faces
+    std::vector<FaceKind> kind(sm.num_faces());
+    int counts[3] = {0, 0, 0};
+    for (auto f : sm.faces()) {
+        FaceKind k = classify_face(sm, f);
+        kind[f.idx()] = k;
+        ++counts[(int)k];
+    }
+    std::cout << "  Split: SIDES=" << counts[0]
+              << "  PLUS_SHEET=" << counts[1]
+              << "  MINUS_SHEET=" << counts[2] << "\n";
+
+    // Collect all vertex positions once
+    std::vector<std::array<double,3>> all_verts;
+    all_verts.reserve(sm.num_vertices());
+    for (auto v : sm.vertices()) {
+        auto p = sm.point(v);
+        all_verts.push_back({CGAL::to_double(p.x()),
+                             CGAL::to_double(p.y()),
+                             CGAL::to_double(p.z())});
+    }
+
+    for (int k = 0; k < 3; ++k) {
+        // Collect faces for this kind, build local vertex mapping
+        std::vector<std::array<std::size_t,3>> faces;
+        std::unordered_map<std::size_t,std::size_t> vmap; // global -> local 0-based
+        std::vector<std::size_t> local_verts;
+
+        for (auto f : sm.faces()) {
+            if ((int)kind[f.idx()] != k) continue;
+            auto h  = sm.halfedge(f);
+            std::array<std::size_t,3> tri;
+            tri[0] = sm.target(h).idx();
+            tri[1] = sm.target(sm.next(h)).idx();
+            tri[2] = sm.target(sm.next(sm.next(h))).idx();
+            for (int j = 0; j < 3; ++j) {
+                if (vmap.find(tri[j]) == vmap.end()) {
+                    vmap[tri[j]] = local_verts.size();
+                    local_verts.push_back(tri[j]);
+                }
+                tri[j] = vmap[tri[j]];
+            }
+            faces.push_back(tri);
+        }
+
+        std::ofstream out(paths[k]);
+        if (!out) { std::cerr << "ERROR: cannot write " << paths[k] << "\n"; continue; }
+        for (auto gi : local_verts) {
+            out << "v " << all_verts[gi][0]
+                << " "  << all_verts[gi][1]
+                << " "  << all_verts[gi][2] << "\n";
+        }
+        for (auto& tri : faces) {
+            out << "f " << (tri[0]+1) << " " << (tri[1]+1) << " " << (tri[2]+1) << "\n";
+        }
+        out.close();
+        std::cout << "  Written: " << paths[k] << "  ("
+                  << local_verts.size() << " verts, " << faces.size() << " faces)\n";
+    }
+}
+
 // ── Catmull-Clark subdivision → pure quad mesh, write OBJ ────────────────────
 //
 // Applied DIRECTLY to the CGAL-generated curvature-adaptive triangle mesh,
@@ -448,49 +621,8 @@ static void catmullclark_and_write_obj(const SMesh& sm_raw,
                                        int   iterations,
                                        const std::string& out_path)
 {
-    namespace PMP = CGAL::Polygon_mesh_processing;
-
-    // ── Repair: Non_manifold_tag can produce non-manifold edges/vertices.
-    //    CatmullClark_subdivision requires a valid manifold polygon mesh.
-    //    Round-trip through polygon soup to fix orientation and remove duplicates.
     std::cout << "Repairing mesh for Catmull-Clark …\n" << std::flush;
-
-    // Extract as polygon soup
-    std::vector<Point_3>                soup_pts;
-    std::vector<std::array<std::size_t,3>> soup_tri;
-    soup_pts.reserve(sm_raw.num_vertices());
-    soup_tri.reserve(sm_raw.num_faces());
-
-    for (auto v : sm_raw.vertices())
-        soup_pts.push_back(sm_raw.point(v));
-    for (auto f : sm_raw.faces()) {
-        auto h = sm_raw.halfedge(f);
-        soup_tri.push_back({
-            (std::size_t)sm_raw.target(h).idx(),
-            (std::size_t)sm_raw.target(sm_raw.next(h)).idx(),
-            (std::size_t)sm_raw.target(sm_raw.next(sm_raw.next(h))).idx()
-        });
-    }
-
-    PMP::repair_polygon_soup(soup_pts, soup_tri);
-    PMP::orient_polygon_soup(soup_pts, soup_tri);
-
-    SMesh sm;
-    if (PMP::is_polygon_soup_a_polygon_mesh(soup_tri))
-        PMP::polygon_soup_to_polygon_mesh(soup_pts, soup_tri, sm);
-    else {
-        std::cerr << "  WARNING: mesh is non-manifold after repair; "
-                     "attempting to build anyway\n";
-        PMP::polygon_soup_to_polygon_mesh(soup_pts, soup_tri, sm);
-    }
-
-    // Remove isolated vertices and degenerate faces left by the soup repair
-    { std::vector<SMesh::Vertex_index> iso;
-      for (auto v : sm.vertices()) if (sm.is_isolated(v)) iso.push_back(v);
-      for (auto v : iso) sm.remove_vertex(v); }
-    PMP::remove_degenerate_faces(sm);
-    sm.collect_garbage();
-
+    SMesh sm = repair_mesh(sm_raw);
     std::cout << "  After repair: " << sm.num_vertices() << " verts, "
               << sm.num_faces() << " faces\n";
 
@@ -524,10 +656,12 @@ int main(int argc, char* argv[])
                   << " [--radius   R]"
                   << " [--distance D]"
                   << " [--quad]"
-                  << " [--quad-iters N]\n"
+                  << " [--quad-iters N]"
+                  << " [--split]\n"
                   << "  Without --quad: output is binary STL (triangle mesh)\n"
                   << "  With    --quad: Catmull-Clark subdivision applied;\n"
-                  << "                 output is OBJ (pure quad mesh, 3×faces)\n";
+                  << "                 output is OBJ (pure quad mesh, 3×faces)\n"
+                  << "  With    --split: also write _plus/_minus/_sides OBJ files\n";
         return 1;
     }
 
@@ -539,11 +673,13 @@ int main(int argc, char* argv[])
     double distance_bound = 0.07;
     bool   do_quad        = false;
     int    quad_iters     = 1;
+    bool   do_split       = false;
 
     for (int i = 3; i < argc; ++i)
     {
         std::string flag(argv[i]);
-        if (flag == "--quad") { do_quad = true; }
+        if      (flag == "--quad")  { do_quad  = true; }
+        else if (flag == "--split") { do_split = true; }
         else if (i + 1 < argc) {
             std::string val(argv[i+1]);
             if      (flag == "--angular")    { angular_bound  = std::stod(val); ++i; }
@@ -583,10 +719,24 @@ int main(int argc, char* argv[])
     SMesh sm = mesh_wall(angular_bound, radius_bound, distance_bound);
 
     // ── Write output ───────────────────────────────────────────────────────
+    // --quad:            repair + Catmull-Clark → quad OBJ
+    // no flag, .obj ext: repair → triangle OBJ  (feed to QuadriFlow)
+    // no flag, .stl ext: binary STL             (legacy / inspection)
+    bool out_is_obj = out_path.size() >= 4 &&
+                      out_path.substr(out_path.size()-4) == ".obj";
+
     if (do_quad)
         catmullclark_and_write_obj(sm, quad_iters, out_path);
-    else
+    else if (out_is_obj) {
+        repair_and_write_obj(sm, out_path);
+        if (do_split) {
+            std::cout << "Splitting into plus/minus/sides OBJ files …\n";
+            SMesh sm_rep = repair_mesh(sm);
+            write_split_obj(sm_rep, out_path);
+        }
+    } else {
         write_stl(out_path, sm);
+    }
 
     std::cout << "Done.\n";
     return 0;
