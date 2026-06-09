@@ -27,6 +27,25 @@ Commands
   list-files [subpath]             List files in app/ (or a subdirectory)
   download <path> [out_dir]        Download a file from app/ to out_dir (default: .)
   download-app [out_dir]           Download the entire app/ folder as a .tar.gz
+
+  --- Gyroid → quad mesh ---
+  quad-mesh [extra_args ...]       Run gyroid_to_quad_mesh_qf.py on the server
+                                   Default output: gyroid_implicit_qf_plus/minus.obj
+  quad-mesh-stop                   Stop the running quad-mesh process
+  quad-mesh-status                 Show quad-mesh process state
+  quad-mesh-stream                 Tail live quad-mesh output
+
+  --- Quad mesh → NURBS STEP ---
+  nurbs [plus|minus] [extra_args ...]  Run quad_to_nurbs.py for a gyroid sheet
+                                       Default sheet: plus
+                                       Default input : gyroid_implicit_qf_<sheet>.obj
+                                       Default output: gyroid_implicit_qf_<sheet>.step
+  nurbs-stop                       Stop the running quad-to-NURBS process
+  nurbs-status                     Show quad-to-NURBS process state
+  nurbs-stream                     Tail live quad-to-NURBS output
+  download-nurbs [plus|minus] [obj|step] [out_dir]
+                                   Download the OBJ (quad mesh) or STEP (NURBS) file
+                                   Defaults: sheet=plus  format=step  out_dir=.
 """
 
 from __future__ import annotations
@@ -228,6 +247,91 @@ def cmd_download_stl(stub, args):
     _save_chunks(chunks, out_dir)
 
 
+def cmd_quad_mesh(stub, args):
+    resp = stub.StartGyroidToQuadMesh(pb2.QuadMeshRequest(extra_args=args.extra_args))
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_quad_mesh_stop(stub, _args):
+    resp = stub.StopGyroidToQuadMesh(pb2.Empty())
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_quad_mesh_status(stub, _args):
+    resp = stub.GetGyroidToQuadMeshStatus(pb2.Empty())
+    state_name = pb2.RunStatusResponse.State.Name(resp.state)
+    print(f"State      : {state_name}")
+    print(f"PID        : {resp.pid or '—'}")
+    print(f"Return code: {resp.return_code}")
+    print(f"Message    : {resp.message}")
+
+
+def cmd_quad_mesh_stream(stub, _args):
+    print("[streaming quad-mesh output — Ctrl-C to quit]\n")
+    try:
+        for line in stub.StreamGyroidToQuadMeshOutput(pb2.Empty()):
+            ts = time.strftime("%H:%M:%S", time.localtime(line.timestamp_ms / 1000))
+            print(f"[{ts}] {line.line}")
+    except KeyboardInterrupt:
+        print("\n[stream closed]")
+    except grpc.RpcError as exc:
+        print(f"gRPC error: {exc.details()}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_nurbs(stub, args):
+    resp = stub.StartQuadToNurbs(pb2.QuadToNurbsRequest(
+        which=args.which,
+        extra_args=args.extra_args,
+    ))
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_nurbs_stop(stub, _args):
+    resp = stub.StopQuadToNurbs(pb2.Empty())
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_nurbs_status(stub, _args):
+    resp = stub.GetQuadToNurbsStatus(pb2.Empty())
+    state_name = pb2.RunStatusResponse.State.Name(resp.state)
+    print(f"State      : {state_name}")
+    print(f"PID        : {resp.pid or '—'}")
+    print(f"Return code: {resp.return_code}")
+    print(f"Message    : {resp.message}")
+
+
+def cmd_nurbs_stream(stub, _args):
+    print("[streaming quad-to-NURBS output — Ctrl-C to quit]\n")
+    try:
+        for line in stub.StreamQuadToNurbsOutput(pb2.Empty()):
+            ts = time.strftime("%H:%M:%S", time.localtime(line.timestamp_ms / 1000))
+            print(f"[{ts}] {line.line}")
+    except KeyboardInterrupt:
+        print("\n[stream closed]")
+    except grpc.RpcError as exc:
+        print(f"gRPC error: {exc.details()}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_download_nurbs(stub, args):
+    out_dir = Path(args.out_dir) if hasattr(args, "out_dir") and args.out_dir else Path(".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    chunks = stub.DownloadNurbsFile(pb2.NurbsFileRequest(
+        which=args.which,
+        format=args.format,
+    ))
+    _save_chunks(chunks, out_dir)
+
+
 def _save_chunks(stream, out_dir: Path) -> None:
     out_path: Path | None = None
     fh = None
@@ -303,28 +407,70 @@ def main() -> None:
                    help="lattice (default), encap, surface, or all (→ .tar.gz)")
     p.add_argument("out_dir", nargs="?", default=".")
 
+    p = sub.add_parser("quad-mesh",
+                       help="Run gyroid_to_quad_mesh_qf.py on the server")
+    p.add_argument("extra_args", nargs="*",
+                   help="Extra flags forwarded to gyroid_to_quad_mesh_qf.py, "
+                        "e.g. --target-faces 30000 --backend quadriflow")
+
+    sub.add_parser("quad-mesh-stop",   help="Stop the running quad-mesh process")
+    sub.add_parser("quad-mesh-status", help="Show quad-mesh process state")
+    sub.add_parser("quad-mesh-stream", help="Tail live quad-mesh output")
+
+    p = sub.add_parser("nurbs",
+                       help="Run quad_to_nurbs.py for a gyroid sheet (plus or minus)")
+    p.add_argument("which", nargs="?", default="plus",
+                   choices=["plus", "minus"],
+                   help="Gyroid sheet to convert (default: plus)")
+    p.add_argument("extra_args", nargs="*",
+                   help="Extra flags forwarded to quad_to_nurbs.py, "
+                        "e.g. --subd 2 --tol 0.001")
+
+    sub.add_parser("nurbs-stop",   help="Stop the running quad-to-NURBS process")
+    sub.add_parser("nurbs-status", help="Show quad-to-NURBS process state")
+    sub.add_parser("nurbs-stream", help="Tail live quad-to-NURBS output")
+
+    p = sub.add_parser("download-nurbs",
+                       help="Download OBJ (quad mesh) or STEP (NURBS) file from the server")
+    p.add_argument("which", nargs="?", default="plus",
+                   choices=["plus", "minus"],
+                   help="Gyroid sheet (default: plus)")
+    p.add_argument("format", nargs="?", default="step",
+                   choices=["obj", "step"],
+                   help="File format: obj (quad mesh) or step (NURBS, default)")
+    p.add_argument("out_dir", nargs="?", default=".")
+
     args = parser.parse_args()
 
     with _channel(args.host, args.port) as channel:
         stub = pb2_grpc.GyroidOptimizerStub(channel)
         dispatch = {
-            "get-config":    cmd_get_config,
-            "set-config":    cmd_set_config,
-            "patch-config":  cmd_patch_config,
-            "start":         cmd_start,
-            "stop":          cmd_stop,
-            "status":        cmd_status,
-            "stream":        cmd_stream,
-            "history":       cmd_history,
-            "latest":        cmd_latest,
-            "list-files":    cmd_list_files,
-            "download":      cmd_download,
-            "download-app":  cmd_download_app,
-            "stl-export":    cmd_stl_export,
-            "stl-stop":      cmd_stl_stop,
-            "stl-status":    cmd_stl_status,
-            "stl-stream":    cmd_stl_stream,
-            "download-stl":  cmd_download_stl,
+            "get-config":         cmd_get_config,
+            "set-config":         cmd_set_config,
+            "patch-config":       cmd_patch_config,
+            "start":              cmd_start,
+            "stop":               cmd_stop,
+            "status":             cmd_status,
+            "stream":             cmd_stream,
+            "history":            cmd_history,
+            "latest":             cmd_latest,
+            "list-files":         cmd_list_files,
+            "download":           cmd_download,
+            "download-app":       cmd_download_app,
+            "stl-export":         cmd_stl_export,
+            "stl-stop":           cmd_stl_stop,
+            "stl-status":         cmd_stl_status,
+            "stl-stream":         cmd_stl_stream,
+            "download-stl":       cmd_download_stl,
+            "quad-mesh":          cmd_quad_mesh,
+            "quad-mesh-stop":     cmd_quad_mesh_stop,
+            "quad-mesh-status":   cmd_quad_mesh_status,
+            "quad-mesh-stream":   cmd_quad_mesh_stream,
+            "nurbs":              cmd_nurbs,
+            "nurbs-stop":         cmd_nurbs_stop,
+            "nurbs-status":       cmd_nurbs_status,
+            "nurbs-stream":       cmd_nurbs_stream,
+            "download-nurbs":     cmd_download_nurbs,
         }
         dispatch[args.command](stub, args)
 

@@ -33,19 +33,31 @@ import gyroid_service_pb2_grpc as pb2_grpc
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-GRPC_DIR    = Path(__file__).resolve().parent
-BASE_DIR    = GRPC_DIR.parent                          # 3Dheatsink_gyroid/
-CONFIG_PATH = BASE_DIR / "gyroid_case_config.yaml"
-WRAPPER     = BASE_DIR / "gyroid_case_wrapper.py"
-STL_SCRIPT  = BASE_DIR / "gyroid_to_stl.py"
-APP_DIR     = BASE_DIR / "app"
-HISTORY     = APP_DIR  / "gyroid_opt_history.txt"
+GRPC_DIR         = Path(__file__).resolve().parent
+BASE_DIR         = GRPC_DIR.parent                          # 3Dheatsink_gyroid/
+CONFIG_PATH      = BASE_DIR / "gyroid_case_config.yaml"
+WRAPPER          = BASE_DIR / "gyroid_case_wrapper.py"
+STL_SCRIPT       = BASE_DIR / "gyroid_to_stl.py"
+QUAD_MESH_SCRIPT = BASE_DIR / "gyroid_to_quad_mesh_qf.py"
+NURBS_SCRIPT     = BASE_DIR / "quad_to_nurbs.py"
+APP_DIR          = BASE_DIR / "app"
+HISTORY          = APP_DIR  / "gyroid_opt_history.txt"
 
 # Named STL outputs produced by gyroid_to_stl.py (relative to BASE_DIR)
 _STL_FILES = {
     "lattice": BASE_DIR / "gyroid_surface_lattice.stl",
     "encap":   BASE_DIR / "gyroid_surface_encap.stl",
     "surface": BASE_DIR / "gyroid_surface.stl",
+}
+
+# Default OBJ and STEP paths for the two gyroid sheets
+_NURBS_OBJ = {
+    "plus":  BASE_DIR / "gyroid_implicit_qf_plus.obj",
+    "minus": BASE_DIR / "gyroid_implicit_qf_minus.obj",
+}
+_NURBS_STEP = {
+    "plus":  BASE_DIR / "gyroid_implicit_qf_plus.step",
+    "minus": BASE_DIR / "gyroid_implicit_qf_minus.step",
 }
 
 CHUNK_SIZE  = 64 * 1024  # 64 KB per FileChunk
@@ -196,8 +208,10 @@ class RunnerState:
                     q.put(None)   # signal end of stream
 
 
-_runner     = RunnerState()   # optimizer subprocess
-_stl_runner = RunnerState()   # gyroid_to_stl.py subprocess
+_runner           = RunnerState()   # optimizer subprocess
+_stl_runner       = RunnerState()   # gyroid_to_stl.py subprocess
+_quad_mesh_runner = RunnerState()   # gyroid_to_quad_mesh_qf.py subprocess
+_nurbs_runner     = RunnerState()   # quad_to_nurbs.py subprocess
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -472,6 +486,128 @@ class GyroidOptimizerServicer(pb2_grpc.GyroidOptimizerServicer):
         if not target.exists():
             context.abort(grpc.StatusCode.NOT_FOUND,
                           f"{target.name} not found — run StartStlExport first")
+            return
+        try:
+            yield from _stream_file(target, target.name)
+        except Exception as exc:
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    # ── Gyroid → quad mesh ────────────────────────────────────────────────────
+
+    def StartGyroidToQuadMesh(self, request, context):
+        try:
+            _quad_mesh_runner.start(list(request.extra_args), script=QUAD_MESH_SCRIPT)
+            return pb2.StatusResponse(
+                success=True,
+                message=f"Gyroid-to-quad-mesh started (pid={_quad_mesh_runner.pid})",
+            )
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def StopGyroidToQuadMesh(self, request, context):
+        try:
+            _quad_mesh_runner.stop()
+            return pb2.StatusResponse(success=True, message="Quad-mesh stop signal sent")
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def GetGyroidToQuadMeshStatus(self, request, context):
+        rc  = _quad_mesh_runner.return_code
+        pid = _quad_mesh_runner.pid or 0
+        if _quad_mesh_runner.is_running:
+            state = pb2.RunStatusResponse.RUNNING
+            msg   = f"Running (pid={pid})"
+        elif rc is None:
+            state = pb2.RunStatusResponse.IDLE
+            msg   = "Idle — no quad-mesh run has been started yet"
+        elif rc == 0:
+            state = pb2.RunStatusResponse.DONE
+            msg   = "Completed successfully"
+        else:
+            state = pb2.RunStatusResponse.ERROR
+            msg   = f"Exited with return code {rc}"
+        return pb2.RunStatusResponse(state=state, pid=pid, message=msg, return_code=rc or 0)
+
+    def StreamGyroidToQuadMeshOutput(self, request, context):
+        for entry in _quad_mesh_runner.output_stream():
+            if not context.is_active():
+                return
+            yield _entry_to_proto(entry)
+
+    # ── Quad mesh → NURBS STEP ────────────────────────────────────────────────
+
+    def StartQuadToNurbs(self, request, context):
+        which = (request.which or "plus").lower().strip()
+        if which not in _NURBS_OBJ:
+            return pb2.StatusResponse(
+                success=False,
+                message=f"Unknown sheet {which!r}. Use 'plus' or 'minus'.",
+            )
+        in_obj   = _NURBS_OBJ[which]
+        out_step = _NURBS_STEP[which]
+        cmd = [
+            sys.executable, str(NURBS_SCRIPT),
+            str(in_obj), str(out_step),
+        ] + list(request.extra_args)
+        try:
+            _nurbs_runner.start(cmd, use_raw_cmd=True)
+            return pb2.StatusResponse(
+                success=True,
+                message=f"QuadToNurbs started for '{which}' (pid={_nurbs_runner.pid})",
+            )
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def StopQuadToNurbs(self, request, context):
+        try:
+            _nurbs_runner.stop()
+            return pb2.StatusResponse(success=True, message="QuadToNurbs stop signal sent")
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def GetQuadToNurbsStatus(self, request, context):
+        rc  = _nurbs_runner.return_code
+        pid = _nurbs_runner.pid or 0
+        if _nurbs_runner.is_running:
+            state = pb2.RunStatusResponse.RUNNING
+            msg   = f"Running (pid={pid})"
+        elif rc is None:
+            state = pb2.RunStatusResponse.IDLE
+            msg   = "Idle — no QuadToNurbs run has been started yet"
+        elif rc == 0:
+            state = pb2.RunStatusResponse.DONE
+            msg   = "Completed successfully"
+        else:
+            state = pb2.RunStatusResponse.ERROR
+            msg   = f"Exited with return code {rc}"
+        return pb2.RunStatusResponse(state=state, pid=pid, message=msg, return_code=rc or 0)
+
+    def StreamQuadToNurbsOutput(self, request, context):
+        for entry in _nurbs_runner.output_stream():
+            if not context.is_active():
+                return
+            yield _entry_to_proto(entry)
+
+    def DownloadNurbsFile(self, request, context):
+        which  = (request.which  or "plus").lower().strip()
+        fmt    = (request.format or "step").lower().strip()
+
+        if which not in _NURBS_OBJ:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                          f"Unknown sheet {which!r}. Use 'plus' or 'minus'.")
+            return
+        if fmt == "obj":
+            target = _NURBS_OBJ[which]
+        elif fmt == "step":
+            target = _NURBS_STEP[which]
+        else:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                          f"Unknown format {fmt!r}. Use 'obj' or 'step'.")
+            return
+
+        if not target.exists():
+            context.abort(grpc.StatusCode.NOT_FOUND,
+                          f"{target.name} not found — run the relevant pipeline first")
             return
         try:
             yield from _stream_file(target, target.name)

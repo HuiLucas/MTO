@@ -131,6 +131,33 @@ message StlFileRequest {
   string which = 1;
 }
 
+// ─── Gyroid-to-quad-mesh ─────────────────────────────────────────────────────
+
+// Start gyroid_to_quad_mesh_qf.py with optional extra CLI flags.
+// Default output: gyroid_implicit_qf_plus.obj / gyroid_implicit_qf_minus.obj
+message QuadMeshRequest {
+  repeated string extra_args = 1;
+}
+
+// ─── Quad-to-NURBS (STEP export) ─────────────────────────────────────────────
+
+// Start quad_to_nurbs.py for one gyroid sheet.
+//   which:      "plus" (default) or "minus"
+//   extra_args: additional CLI flags forwarded to quad_to_nurbs.py
+//               e.g. ["--subd", "2", "--tol", "0.001"]
+message QuadToNurbsRequest {
+  string          which      = 1;   // "plus" or "minus"  (default: "plus")
+  repeated string extra_args = 2;
+}
+
+// Request a generated OBJ or STEP file.
+//   which:  "plus" or "minus"  (default: "plus")
+//   format: "obj" or "step"    (default: "step")
+message NurbsFileRequest {
+  string which  = 1;
+  string format = 2;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 service GyroidOptimizer {
@@ -195,4 +222,35 @@ service GyroidOptimizer {
 
   // Download a generated STL file (or all of them as a .tar.gz).
   rpc DownloadStl (StlFileRequest) returns (stream FileChunk);
+
+  // ── Gyroid → quad mesh ─────────────────────────────────────────────────────
+
+  // Start gyroid_to_quad_mesh_qf.py (error if already running).
+  rpc StartGyroidToQuadMesh (QuadMeshRequest) returns (StatusResponse);
+
+  // Send SIGTERM to the quad-mesh process (SIGKILL after 10 s).
+  rpc StopGyroidToQuadMesh (Empty) returns (StatusResponse);
+
+  // Query the quad-mesh process state.
+  rpc GetGyroidToQuadMeshStatus (Empty) returns (RunStatusResponse);
+
+  // Server-streaming: replay buffered output, then tail live output.
+  rpc StreamGyroidToQuadMeshOutput (Empty) returns (stream OutputLine);
+
+  // ── Quad mesh → NURBS STEP ─────────────────────────────────────────────────
+
+  // Start quad_to_nurbs.py for a specific gyroid sheet (error if already running).
+  rpc StartQuadToNurbs (QuadToNurbsRequest) returns (StatusResponse);
+
+  // Send SIGTERM to the quad-to-NURBS process (SIGKILL after 10 s).
+  rpc StopQuadToNurbs (Empty) returns (StatusResponse);
+
+  // Query the quad-to-NURBS process state.
+  rpc GetQuadToNurbsStatus (Empty) returns (RunStatusResponse);
+
+  // Server-streaming: replay buffered output, then tail live output.
+  rpc StreamQuadToNurbsOutput (Empty) returns (stream OutputLine);
+
+  // Download a generated OBJ (quad mesh) or STEP (NURBS) file.
+  rpc DownloadNurbsFile (NurbsFileRequest) returns (stream FileChunk);
 }

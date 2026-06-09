@@ -117,6 +117,51 @@ class GyroidOptimizerStub:
                 request_serializer=gyroid__service__pb2.StlFileRequest.SerializeToString,
                 response_deserializer=gyroid__service__pb2.FileChunk.FromString,
                 _registered_method=True)
+        self.StartGyroidToQuadMesh = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StartGyroidToQuadMesh',
+                request_serializer=gyroid__service__pb2.QuadMeshRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.StopGyroidToQuadMesh = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StopGyroidToQuadMesh',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.GetGyroidToQuadMeshStatus = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/GetGyroidToQuadMeshStatus',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.RunStatusResponse.FromString,
+                _registered_method=True)
+        self.StreamGyroidToQuadMeshOutput = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/StreamGyroidToQuadMeshOutput',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.OutputLine.FromString,
+                _registered_method=True)
+        self.StartQuadToNurbs = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StartQuadToNurbs',
+                request_serializer=gyroid__service__pb2.QuadToNurbsRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.StopQuadToNurbs = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StopQuadToNurbs',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.GetQuadToNurbsStatus = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/GetQuadToNurbsStatus',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.RunStatusResponse.FromString,
+                _registered_method=True)
+        self.StreamQuadToNurbsOutput = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/StreamQuadToNurbsOutput',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.OutputLine.FromString,
+                _registered_method=True)
+        self.DownloadNurbsFile = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/DownloadNurbsFile',
+                request_serializer=gyroid__service__pb2.NurbsFileRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.FileChunk.FromString,
+                _registered_method=True)
 
 
 class GyroidOptimizerServicer:
@@ -249,6 +294,73 @@ class GyroidOptimizerServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartGyroidToQuadMesh(self, request, context):
+        """── Gyroid → quad mesh ─────────────────────────────────────────────────────
+
+        Start gyroid_to_quad_mesh_qf.py (error if already running).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopGyroidToQuadMesh(self, request, context):
+        """Send SIGTERM to the quad-mesh process (SIGKILL after 10 s).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetGyroidToQuadMeshStatus(self, request, context):
+        """Query the quad-mesh process state.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamGyroidToQuadMeshOutput(self, request, context):
+        """Server-streaming: replay buffered output, then tail live output.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartQuadToNurbs(self, request, context):
+        """── Quad mesh → NURBS STEP ─────────────────────────────────────────────────
+
+        Start quad_to_nurbs.py for a specific gyroid sheet (error if already running).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopQuadToNurbs(self, request, context):
+        """Send SIGTERM to the quad-to-NURBS process (SIGKILL after 10 s).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetQuadToNurbsStatus(self, request, context):
+        """Query the quad-to-NURBS process state.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamQuadToNurbsOutput(self, request, context):
+        """Server-streaming: replay buffered output, then tail live output.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DownloadNurbsFile(self, request, context):
+        """Download a generated OBJ (quad mesh) or STEP (NURBS) file.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GyroidOptimizerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -330,6 +442,51 @@ def add_GyroidOptimizerServicer_to_server(servicer, server):
             'DownloadStl': grpc.unary_stream_rpc_method_handler(
                     servicer.DownloadStl,
                     request_deserializer=gyroid__service__pb2.StlFileRequest.FromString,
+                    response_serializer=gyroid__service__pb2.FileChunk.SerializeToString,
+            ),
+            'StartGyroidToQuadMesh': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartGyroidToQuadMesh,
+                    request_deserializer=gyroid__service__pb2.QuadMeshRequest.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'StopGyroidToQuadMesh': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopGyroidToQuadMesh,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'GetGyroidToQuadMeshStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetGyroidToQuadMeshStatus,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.RunStatusResponse.SerializeToString,
+            ),
+            'StreamGyroidToQuadMeshOutput': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamGyroidToQuadMeshOutput,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.OutputLine.SerializeToString,
+            ),
+            'StartQuadToNurbs': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartQuadToNurbs,
+                    request_deserializer=gyroid__service__pb2.QuadToNurbsRequest.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'StopQuadToNurbs': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopQuadToNurbs,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'GetQuadToNurbsStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetQuadToNurbsStatus,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.RunStatusResponse.SerializeToString,
+            ),
+            'StreamQuadToNurbsOutput': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamQuadToNurbsOutput,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.OutputLine.SerializeToString,
+            ),
+            'DownloadNurbsFile': grpc.unary_stream_rpc_method_handler(
+                    servicer.DownloadNurbsFile,
+                    request_deserializer=gyroid__service__pb2.NurbsFileRequest.FromString,
                     response_serializer=gyroid__service__pb2.FileChunk.SerializeToString,
             ),
     }
@@ -767,6 +924,249 @@ class GyroidOptimizer:
             target,
             '/gyroid.GyroidOptimizer/DownloadStl',
             gyroid__service__pb2.StlFileRequest.SerializeToString,
+            gyroid__service__pb2.FileChunk.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartGyroidToQuadMesh(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StartGyroidToQuadMesh',
+            gyroid__service__pb2.QuadMeshRequest.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopGyroidToQuadMesh(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StopGyroidToQuadMesh',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetGyroidToQuadMeshStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/GetGyroidToQuadMeshStatus',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.RunStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamGyroidToQuadMeshOutput(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StreamGyroidToQuadMeshOutput',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.OutputLine.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartQuadToNurbs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StartQuadToNurbs',
+            gyroid__service__pb2.QuadToNurbsRequest.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopQuadToNurbs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StopQuadToNurbs',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetQuadToNurbsStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/GetQuadToNurbsStatus',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.RunStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamQuadToNurbsOutput(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StreamQuadToNurbsOutput',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.OutputLine.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DownloadNurbsFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/DownloadNurbsFile',
+            gyroid__service__pb2.NurbsFileRequest.SerializeToString,
             gyroid__service__pb2.FileChunk.FromString,
             options,
             channel_credentials,
