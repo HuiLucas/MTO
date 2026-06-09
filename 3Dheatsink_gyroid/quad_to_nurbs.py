@@ -46,15 +46,15 @@ import numpy as np
 
 # ── OCC imports ────────────────────────────────────────────────────────────────
 try:
-    from OCC.wrapper.gp                import gp_Pnt
-    from OCC.wrapper.TColgp            import TColgp_Array2OfPnt
-    from OCC.wrapper.GeomAPI           import GeomAPI_PointsToBSplineSurface
-    from OCC.wrapper.GeomAbs           import GeomAbs_C2
-    from OCC.wrapper.BRepBuilderAPI    import BRepBuilderAPI_MakeFace, BRepBuilderAPI_Sewing
-    from OCC.wrapper.BRep              import BRep_Builder
-    from OCC.wrapper.TopoDS            import TopoDS_Compound
-    from OCC.wrapper.STEPControl       import STEPControl_Writer, STEPControl_AsIs
-    from OCC.wrapper.IFSelect          import IFSelect_RetDone
+    from OCC.Core.gp                import gp_Pnt
+    from OCC.Core.TColgp            import TColgp_Array2OfPnt
+    from OCC.Core.GeomAPI           import GeomAPI_PointsToBSplineSurface
+    from OCC.Core.GeomAbs           import GeomAbs_C2
+    from OCC.Core.BRepBuilderAPI    import BRepBuilderAPI_MakeFace, BRepBuilderAPI_Sewing
+    from OCC.Core.BRep              import BRep_Builder
+    from OCC.Core.TopoDS            import TopoDS_Compound
+    from OCC.Core.STEPControl       import STEPControl_Writer, STEPControl_AsIs
+    from OCC.Core.IFSelect          import IFSelect_RetDone
 except ImportError as e:
     sys.exit(f"ERROR: OCC not found ({e}).\n"
              "Install parapy-occ or pythonocc-core and retry.")
