@@ -698,8 +698,8 @@ def run_openfoam_one_step(case_dir: Path,
         backup_latest_fluid_state(case_dir)
 
 
-def read_objective(case_dir: Path) -> tuple[float, float, float, float, float]:
-    """Read the latest meanT, DissPower, massflow, deltaP and outletT from text files."""
+def read_objective(case_dir: Path) -> tuple[float, float, float, float, float, float]:
+    """Read the latest meanT, DissPower, massflow, deltaP, outletT, and alphaMax from text files."""
     def _last(fname):
         p = case_dir / fname
         if not p.exists():

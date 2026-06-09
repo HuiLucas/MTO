@@ -80,8 +80,7 @@ def _gyroid_geometry(
         dGx_dkx, dGx_dky, dGx_dkz,
         dGy_dkx, dGy_dky, dGy_dkz,
         dGz_dkx, dGz_dky, dGz_dkz,
-        w, dw_dkx, dw_dky, dw_dkz,
-        eps_reg
+        w, dw_dkx, dw_dky, dw_dkz
     """
     eps_reg = 1e-6
     x = pts_mm[:, 0]; y = pts_mm[:, 1]; z = pts_mm[:, 2]
@@ -347,7 +346,15 @@ def compute_gyroid_overhang_raw(
 
 class AMConstraints:
     """
-    Stores overhang constraint parameters and the adaptive penalty weight.
+    Stores AM overhang constraint parameters and the adaptive penalty multiplier.
+
+    Attributes
+    ----------
+    cos_max      : cos(theta_max) — faces with n̂·b̂ < -cos_max are overhanging.
+    b_vec        : unit build-direction vector (default +z, i.e. build upward).
+    P_bar        : maximum allowed surface-weighted mean overhang violation.
+    mu_oh        : current penalty multiplier, increased via update_penalties().
+    use_overhang : whether to enable the constraint at all.
     """
 
     def __init__(

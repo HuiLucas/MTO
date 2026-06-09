@@ -9,12 +9,6 @@ wmake
 
 If the build succeeds, the optimiser is ready to run with a YAML configuration file.
 
-## Clean the directory from a previous run
-In 3Dheatsink_gyroid, run:
-```bash
-python clean_for_gyroid.py
-```
-
 ## Using the YAML file to run the optimiser
 
 The YAML file is the optimiser's runtime configuration. It usually defines:

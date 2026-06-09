@@ -1,16 +1,29 @@
 """High-level case wrapper for the gyroid RBF optimizer.
 
-This script owns the OpenFOAM case preparation step:
+This script owns the OpenFOAM case preparation step and launches the optimizer:
 
-1. Reset the case workspace.
-2. Write a box mesh with configurable size and inlet/outlet axis.
-3. Write material and decomposition dictionaries.
-4. Run blockMesh, topoSet, and decomposePar.
-5. Launch the existing gyroid optimizer with matching geometry bounds.
+1. Load all settings from a YAML config file (gyroid_case_config.yaml).
+2. Reset the case workspace (unless --skip-clean or --restart is passed).
+3. Write a box mesh (blockMeshDict) with configurable size, cell count, flow
+   axis, and inlet/outlet windows.
+4. Write boundary conditions (U, T, Tb), material/turbulence/thermal property
+   dictionaries, decomposeParDict, and controlDict.
+5. Run blockMesh, topoSet, and (optionally) decomposePar.
+6. Build a GyroidRBFOptimizer with geometry bounds derived from the config and
+   launch it.  Supports L-BFGS-B, MMA, and trust-constr optimisation methods.
 
-The wrapper keeps the optimizer itself unchanged in spirit: it still evaluates
-the gyroid field and drives the solver, but it no longer has to know how the
-case was assembled.
+Restart support
+---------------
+Pass --restart to resume from a checkpoint without re-meshing:
+  • Skips clean-up and re-meshing so all existing run files are preserved.
+  • Reads the last iteration number and adaptive mu values from the history
+    file and continues the iteration count seamlessly.
+  • Loads control points from gyroid_ctrl_pts_checkpoint.txt.
+
+Pareto-front sweeps
+-------------------
+Set optimization.pareto_enabled: true in the YAML to sweep a sequence of
+weighted-sum problems between thermal and hydraulic objectives via ParetoExplorer.
 """
 
 from __future__ import annotations
@@ -265,6 +278,7 @@ def _parse_build_direction(value: object) -> tuple[float, float, float] | None:
 
 
 def load_config(path: Path) -> dict:
+    """Load and return the YAML config file as a dict."""
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
     with open(path, 'r', encoding='utf-8') as handle:
@@ -275,6 +289,12 @@ def load_config(path: Path) -> dict:
 
 
 def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSettings, BoxGeometry, MaterialProperties, OptimizationSettings, InletSettings, OutletSettings, TurbulenceProperties, ThermalSettings]:
+    """Parse config dict and CLI overrides into typed settings dataclasses.
+
+    CLI arguments take precedence over YAML values; YAML values override built-in
+    defaults.  Returns (run, geometry, props, optimisation, inlet, outlet,
+    turbulence, thermal).
+    """
     run_cfg = dict(config.get('run', {}))
     geometry_cfg = dict(config.get('geometry', {}))
     material_cfg = dict(config.get('material', {}))
@@ -425,6 +445,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
 
 
 def _axis_index(axis: str) -> int:
+    """Map axis name 'x'/'y'/'z' to index 0/1/2."""
     mapping = {'x': 0, 'y': 1, 'z': 2}
     if axis not in mapping:
         raise ValueError(f"Unsupported axis '{axis}'. Use x, y, or z.")
@@ -432,6 +453,7 @@ def _axis_index(axis: str) -> int:
 
 
 def _flow_axis_velocity_vector(flow_axis: str, inlet_face: str, magnitude: float = 0.1) -> tuple[float, float, float]:
+    """Return the (ux, uy, uz) inlet velocity vector for the given flow axis and face."""
     sign = 1.0 if inlet_face == 'min' else -1.0
     velocity = [0.0, 0.0, 0.0]
     velocity[_axis_index(flow_axis)] = sign * magnitude
@@ -439,6 +461,7 @@ def _flow_axis_velocity_vector(flow_axis: str, inlet_face: str, magnitude: float
 
 
 def _balanced_subdomains(n_subdomains: int) -> tuple[int, int, int]:
+    """Return the most balanced (nx, ny, nz) factorisation of n_subdomains."""
     if n_subdomains < 1:
         raise ValueError('number of subdomains must be >= 1')
 
@@ -520,6 +543,14 @@ def _split_cell_counts(total_cells: int, coords: list[float]) -> list[int]:
 
 
 def write_block_mesh_dict(system_dir: Path, geometry: BoxGeometry, inlet: InletSettings, outlet: OutletSettings) -> None:
+    """Write blockMeshDict for an axis-aligned box with inlet and outlet windows.
+
+    The mesh is subdivided at the inlet and outlet window edges on the transverse
+    axes so each window face is exactly one block face.  Boundary patches:
+      inlet / outlet  — the window faces on the flow axis
+      wall            — first transverse axis pair outer faces
+      sym / force     — second transverse axis pair: min=sym, max=force
+    """
     axis_names = ('x', 'y', 'z')
     flow_axis = geometry.flow_axis.lower()
     if flow_axis not in axis_names:
@@ -711,6 +742,7 @@ def write_block_mesh_dict(system_dir: Path, geometry: BoxGeometry, inlet: InletS
 
 
 def write_control_dict(system_dir: Path, solver: str) -> None:
+    """Write controlDict set up for single outer-iteration runs (endTime=1, deltaT=1)."""
     content = _foam_header('system', 'controlDict')
     content += f"""
 application     {solver};
@@ -737,6 +769,7 @@ libs ( \"libOpenFOAM.so\" ) ;
 
 
 def write_decompose_par_dict(system_dir: Path, n_subdomains: int) -> None:
+    """Write decomposeParDict using the 'simple' method with a balanced decomposition."""
     nx, ny, nz = _balanced_subdomains(n_subdomains)
     content = _foam_header('system', 'decomposeParDict')
     content += f"""
@@ -843,6 +876,7 @@ actions
 
 
 def write_initial_velocity_field(case_dir: Path, geometry: BoxGeometry, inlet: InletSettings) -> None:
+    """Write 0/U with a fixedValue inlet and noSlip on force/wall patches."""
     inlet_velocity = _flow_axis_velocity_vector(geometry.flow_axis, inlet.face, inlet.velocity_magnitude)
     ux, uy, uz = inlet_velocity
     content = _foam_header('0', 'U', 'volVectorField')
@@ -886,6 +920,7 @@ boundaryField
 
 
 def write_initial_temperature_field(case_dir: Path, inlet: InletSettings, thermal: ThermalSettings, outlet: OutletSettings) -> None:
+    """Write 0/T with a fixedValue inlet temperature and zeroGradient elsewhere."""
     inlet_temp = inlet.temperature
     content = _foam_header('0', 'T', 'volScalarField')
     content += f"""
@@ -970,6 +1005,7 @@ boundaryField
 
 
 def write_transport_properties(constant_dir: Path, props: MaterialProperties, opt1 = 1, opt2 = 1) -> None:
+    """Write constant/transportProperties including fluid props and MTO solver parameters."""
     content = _foam_header('constant', 'transportProperties')
     content += f"""
 transportModel  Newtonian;
@@ -1008,6 +1044,7 @@ opt2                   {opt2};
 
 
 def write_thermal_properties(constant_dir: Path, props: MaterialProperties) -> None:
+    """Write constant/thermalProperties (kf, ks, rhoc, Talpha, Texterior, hconv)."""
     content = _foam_header('constant', 'thermalProperties')
     content += f"""
 kf                           kf [1 1 -3 -1 0 0 0] {props.kf:.12g};
@@ -1027,6 +1064,7 @@ hconv                      hconv [1 0 -3 -1 0 0 0] {props.hconv:.12g};
 
 
 def write_turbulence_properties(constant_dir: Path, props: TurbulenceProperties) -> None:
+    """Write constant/turbulenceProperties (simulationType and RAS sub-dict)."""
     content = _foam_header('constant', 'turbulenceProperties')
     content += f"""
 simulationType {props.simulation_type};
@@ -1048,12 +1086,14 @@ RAS
 
 
 def run_command(cmd: list[str], cwd: Path) -> None:
+    """Run a shell command in cwd, printing it first; raises on non-zero exit."""
     print(f"  {' '.join(cmd)}")
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
 def prepare_case(case_dir: Path, geometry: BoxGeometry, inlet: InletSettings, outlet: OutletSettings, props: MaterialProperties, turbulence: TurbulenceProperties, thermal: ThermalSettings, solver: str,
                  n_subdomains: int) -> None:
+    """Full case setup: clean, remove polyMesh and processor dirs, write all dicts."""
     print(f"Preparing case at {case_dir}")
     clean_case(case_dir, dry_run=False)
 
@@ -1082,6 +1122,16 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings,
                     inlet: InletSettings, outlet: OutletSettings,
                     mu_penalty_override: float | None = None,
                     mu_overhang_override: float | None = None) -> GyroidRBFOptimizer:
+    """Construct a GyroidRBFOptimizer from resolved settings.
+
+    The gyroid rotation vector is always derived from the inlet→outlet flow
+    direction so the gyroid channels are aligned with the flow.  The AM build
+    direction defaults to the YAML value but can be overridden to match the
+    flow direction via optimization.am_align_build_to_flow.
+
+    mu_penalty_override / mu_overhang_override let the restart path inject
+    the adaptive penalty values recovered from the history file.
+    """
     ox, oy, oz = geometry.origin_mm
     sx, sy, sz = geometry.size_mm
     opt_min = np.array([ox, oy, oz], dtype=float)

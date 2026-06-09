@@ -2,19 +2,25 @@
 clean_for_gyroid.py — Reset the 3D heat-sink case for a fresh Gyroid RBF run.
 
 Removes:
-  • All SIMP/MMA time directories (10, 20, …, 330) and the optimizer output
-    directory (1) from both the case root and every processor* subdirectory.
-  • Optimizer monitoring files (meanT.txt, Disspower.txt, Voluse.txt, Time.txt).
-  • Cached Python optimizer files (cell_centers_mm.npy, gyroid_ctrl_pts*.txt,
-    gyroid_opt_history.txt).
-  • The app/0/gamma file written by the Gyroid optimizer (so gamma reverts to
-    the default uniform value of voluse=0.2 on next run).
+  • All numeric time directories except 0 (covers both SIMP/MMA runs such as
+    10, 20, … and gyroid-optimizer iterations such as 1, 2, …) from both the
+    case root and every processor* subdirectory.
+  • Monitoring files written by the solver: meanT.txt, Disspower.txt,
+    Voluse.txt, Time.txt.
+  • Optimizer state files: cell_centers_mm.npy, gyroid_ctrl_pts*.txt,
+    gyroid_opt_history.txt.
+  • The app/0/gamma file written by the Gyroid optimizer, so gamma reverts to
+    the default uniform value (voluse) on the next run.
+  • Resets controlDict to startTime=0 / endTime=400 / writeInterval=10.
 
 Keeps:
-  • app/0/  — all original initial-condition fields (p, U, T, Tb, Ub, Uc, pb, pc)
+  • app/0/  — all original initial-condition fields (p, U, T, Tb, …)
   • app/constant/ and app/system/
   • app/processor*/0/ and app/processor*/constant/
-  • controlDict, decomposeParDict, etc.
+  • latest_fluid_state/ backup directory (if present)
+
+Not removed (written by solver per-run, accumulate across runs):
+  • massflow.txt, deltaP.txt, outletT.txt, alphaMax.txt
 
 Usage:
     python clean_for_gyroid.py [--case app] [--dry-run]

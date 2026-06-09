@@ -1,3 +1,35 @@
+"""
+gyroid_to_stl.py — Export the optimised gyroid wall surface to a binary STL.
+
+Pipeline
+--------
+1. Load RBF control-point checkpoint (gyroid_ctrl_pts_checkpoint.txt) and bake
+   the thin-plate-spline frequency perturbation field onto a regular grid.
+2. Evaluate f = |G(x,y,z)| − half_thickness over a user-specified voxel grid.
+   Supports both the standard and rotated (flow-aligned) gyroid formulas.
+3. Pad the SDF volume by one voxel of +1 at all faces so marching cubes
+   generates flat closing caps at domain boundaries, producing a watertight solid.
+4. Run skimage marching_cubes at the f = 0 isosurface.
+5. Optionally mirror the half-symmetry domain across y = y_max.
+6. Optionally decimate the mesh with Open3D QEM if face count exceeds
+   --target-faces.
+7. Optionally build an analytic encapsulation shell (outer wall + inlet/outlet
+   windows) and write it as a separate STL alongside the lattice STL.
+8. Optionally export the two fluid-channel volumes (G > +half_t and G < −half_t)
+   as separate STLs for inspection or CFD meshing.
+
+The wall half-thickness in G-space is computed identically to the optimizer:
+    half_t = 0.5 × wall_mm × k_base × √3
+using k_base (not k_max = k_base + kbound), consistent with the optimizer comment
+in gyroid_rbf_optimizer.py.
+
+Usage
+-----
+    python gyroid_to_stl.py [--ctrl <checkpoint.txt>] [--out <output.stl>]
+                             [--config <gyroid_case_config.yaml>]
+                             [--unit MM] [--wall MM] [--res MM]
+                             [--mirror-y] [--encap-wall MM] [--fluid-stl]
+"""
 
 from __future__ import annotations
 
@@ -175,11 +207,49 @@ def _box_mesh(lo: np.ndarray, hi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return v, f
 
 
+def _windowed_face_boxes(face: str,
+                          outer_lo: np.ndarray, outer_hi: np.ndarray,
+                          win_lo: list, win_hi: list) -> list[tuple]:
+    """
+    Split a face plate into 4 border strips around a rectangular window hole.
+    outer_lo/hi: full 3D extents of the face plate (including wall thickness).
+    win_lo/hi:   3D window corner coords; only the two in-plane axes are used.
+    Returns list of (lo, hi) lists for _box_mesh.
+    """
+    face_inplane = {
+        'xmin': (1, 2), 'xmax': (1, 2),
+        'ymin': (0, 2), 'ymax': (0, 2),
+        'zmin': (0, 1), 'zmax': (0, 1),
+    }
+    a0, a1 = face_inplane[face]
+    boxes = []
+    # strip along low side of a0
+    if win_lo[a0] > outer_lo[a0]:
+        lo = outer_lo.copy(); hi = outer_hi.copy(); hi[a0] = win_lo[a0]
+        boxes.append((lo.tolist(), hi.tolist()))
+    # strip along high side of a0
+    if win_hi[a0] < outer_hi[a0]:
+        lo = outer_lo.copy(); hi = outer_hi.copy(); lo[a0] = win_hi[a0]
+        boxes.append((lo.tolist(), hi.tolist()))
+    # strip along low side of a1 (clamped to window a0 span)
+    if win_lo[a1] > outer_lo[a1]:
+        lo = outer_lo.copy(); hi = outer_hi.copy()
+        lo[a0] = win_lo[a0]; hi[a0] = win_hi[a0]; hi[a1] = win_lo[a1]
+        boxes.append((lo.tolist(), hi.tolist()))
+    # strip along high side of a1 (clamped to window a0 span)
+    if win_hi[a1] < outer_hi[a1]:
+        lo = outer_lo.copy(); hi = outer_hi.copy()
+        lo[a0] = win_lo[a0]; hi[a0] = win_hi[a0]; lo[a1] = win_hi[a1]
+        boxes.append((lo.tolist(), hi.tolist()))
+    return boxes
+
+
 def build_encap_mesh(xmin: float, xmax: float,
                      ymin: float, ymax: float,
                      zmin: float, zmax: float,
                      thickness: float,
-                     open_faces: set) -> tuple[np.ndarray, np.ndarray]:
+                     open_faces: set,
+                     windowed_faces: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
     """
     Build the encapsulation wall mesh analytically as closed rectangular prisms.
 
@@ -190,30 +260,47 @@ def build_encap_mesh(xmin: float, xmax: float,
     the box reaches t beyond the domain (filling the corner); on open sides it
     stops exactly at the domain boundary (generating a visible end-cap face).
 
+    windowed_faces: dict mapping face name → (win_lo, win_hi) 3D lists.
+        Open faces with a window entry get a face plate with a rectangular
+        cutout of that size/position instead of being left fully open.
+
     Returns (verts (N,3), faces (M,3)) ready to concatenate with the lattice mesh.
     Valid face names: xmin, xmax, ymin, ymax, zmin, zmax.
     """
     t = thickness
-    x_lo = xmin - t if 'xmin' not in open_faces else xmin
-    x_hi = xmax + t if 'xmax' not in open_faces else xmax
-    y_lo = ymin - t if 'ymin' not in open_faces else ymin
-    y_hi = ymax + t if 'ymax' not in open_faces else ymax
-    z_lo = zmin - t if 'zmin' not in open_faces else zmin
-    z_hi = zmax + t if 'zmax' not in open_faces else zmax
+    if windowed_faces is None:
+        windowed_faces = {}
+
+    # Windowed faces behave like closed faces for corner-fill purposes so that
+    # the adjacent side walls extend fully into the corner region.
+    eff_open = open_faces - set(windowed_faces.keys())
+
+    x_lo = xmin - t if 'xmin' not in eff_open else xmin
+    x_hi = xmax + t if 'xmax' not in eff_open else xmax
+    y_lo = ymin - t if 'ymin' not in eff_open else ymin
+    y_hi = ymax + t if 'ymax' not in eff_open else ymax
+    z_lo = zmin - t if 'zmin' not in eff_open else zmin
+    z_hi = zmax + t if 'zmax' not in eff_open else zmax
+
+    # Map each face to its solid-plate (lo, hi) so we can reuse them for windowed plates.
+    face_plate = {
+        'xmin': ([xmin - t, y_lo, z_lo], [xmin,     y_hi, z_hi]),
+        'xmax': ([xmax,     y_lo, z_lo], [xmax + t, y_hi, z_hi]),
+        'ymin': ([x_lo, ymin - t, z_lo], [x_hi, ymin,     z_hi]),
+        'ymax': ([x_lo, ymax,     z_lo], [x_hi, ymax + t, z_hi]),
+        'zmin': ([x_lo, y_lo, zmin - t], [x_hi, y_hi, zmin    ]),
+        'zmax': ([x_lo, y_lo, zmax    ], [x_hi, y_hi, zmax + t]),
+    }
 
     boxes: list[tuple] = []
-    if 'xmin' not in open_faces:
-        boxes.append(([xmin - t, y_lo, z_lo], [xmin,     y_hi, z_hi]))
-    if 'xmax' not in open_faces:
-        boxes.append(([xmax,     y_lo, z_lo], [xmax + t, y_hi, z_hi]))
-    if 'ymin' not in open_faces:
-        boxes.append(([x_lo, ymin - t, z_lo], [x_hi, ymin,     z_hi]))
-    if 'ymax' not in open_faces:
-        boxes.append(([x_lo, ymax,     z_lo], [x_hi, ymax + t, z_hi]))
-    if 'zmin' not in open_faces:
-        boxes.append(([x_lo, y_lo, zmin - t], [x_hi, y_hi, zmin    ]))
-    if 'zmax' not in open_faces:
-        boxes.append(([x_lo, y_lo, zmax    ], [x_hi, y_hi, zmax + t]))
+    for face, (lo, hi) in face_plate.items():
+        if face in windowed_faces:
+            win_lo, win_hi = windowed_faces[face]
+            outer_lo = np.array(lo, dtype=np.float64)
+            outer_hi = np.array(hi, dtype=np.float64)
+            boxes.extend(_windowed_face_boxes(face, outer_lo, outer_hi, win_lo, win_hi))
+        elif face not in open_faces:
+            boxes.append((lo, hi))
 
     if not boxes:
         return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
@@ -358,6 +445,27 @@ def read_yaml_params(yaml_path: Path) -> dict:
         else:
             params['gyroid_rot_vec'] = None
 
+        # Compute 3D window bounds for inlet/outlet → windowed_faces
+        flow_axis_str = 'xyz'[flow_idx]
+        inlet_face_name  = flow_axis_str + inlet_face   # e.g. 'zmin'
+        outlet_face_name = flow_axis_str + outlet_face  # e.g. 'zmax'
+        inlet_size_2d  = inlet_cfg.get('window_size_mm',  [0.0, 0.0])
+        outlet_size_2d = outlet_cfg.get('window_size_mm', [0.0, 0.0])
+
+        inlet_win_lo  = list(inlet_3d)
+        inlet_win_hi  = list(inlet_3d)
+        outlet_win_lo = list(outlet_3d)
+        outlet_win_hi = list(outlet_3d)
+        for local_i, ax_i in enumerate(transverse):
+            inlet_win_hi[ax_i]  = inlet_win_lo[ax_i]  + float(inlet_size_2d[local_i])
+            outlet_win_hi[ax_i] = outlet_win_lo[ax_i] + float(outlet_size_2d[local_i])
+
+        params['windowed_faces'] = {}
+        if any(s > 0 for s in inlet_size_2d):
+            params['windowed_faces'][inlet_face_name]  = (inlet_win_lo,  inlet_win_hi)
+        if any(s > 0 for s in outlet_size_2d):
+            params['windowed_faces'][outlet_face_name] = (outlet_win_lo, outlet_win_hi)
+
     except ImportError:
         # Fallback: naive line-by-line parse
         text = yaml_path.read_text()
@@ -385,7 +493,8 @@ def main() -> None:
                     encap_wall_mm=0.0,
                     encap_open_faces=['zmin', 'zmax'],
                     bake_spacing=0.3,
-                    gyroid_rot_vec=None)
+                    gyroid_rot_vec=None,
+                    windowed_faces={})
 
     # Pre-scan for --config so we can load it before argparse finalises defaults
     pre = argparse.ArgumentParser(add_help=False)
@@ -597,6 +706,7 @@ def main() -> None:
             args.ymin, args.ymax,
             args.zmin, args.zmax,
             args.encap_wall, open_faces,
+            windowed_faces=defaults.get('windowed_faces', {}),
         )
         print(f"  Encap mesh : {len(encap_verts):,} vertices, {len(encap_faces):,} triangles")
 

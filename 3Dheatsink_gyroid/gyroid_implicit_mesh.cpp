@@ -491,6 +491,12 @@ static void write_stl(const std::string& out_path, const SMesh& sm)
 
 enum FaceKind { SIDES = 0, PLUS_SHEET = 1, MINUS_SHEET = 2 };
 
+// Classify a triangle as PLUS_SHEET / MINUS_SHEET (gyroid wall) or SIDES (flat closing cap).
+// Near-boundary triangles (centroid within 2.5 × cap_margin of any domain face) are checked
+// for axis-alignment: a face is classified SIDES when its largest normal component > 0.6,
+// i.e. the face is within ~53° of a coordinate plane.  The 0.6 threshold is deliberately
+// generous so that slightly tilted closing caps near domain edges are captured.  Triangles
+// further from the boundary are assigned PLUS/MINUS based on sign(G) at the centroid.
 static FaceKind classify_face(const SMesh& sm, SMesh::Face_index f)
 {
     // Compute centroid

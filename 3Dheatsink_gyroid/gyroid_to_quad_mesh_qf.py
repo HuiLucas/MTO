@@ -1,4 +1,34 @@
+"""
+gyroid_to_quad_mesh_qf.py — Export the gyroid surface as a curvature-aligned quad mesh.
 
+Pipeline
+--------
+1. Load RBF control-point checkpoint and bake the frequency perturbation field.
+2. Write a binary params file (gyroid_mesh_params.bin) consumed by the C++
+   CGAL mesher (gyroid_implicit_mesh.cpp).
+3. Compile and run the CGAL mesher to produce a curvature-adaptive triangle OBJ.
+   With --split, the mesher also writes separate _plus, _minus, and _sides OBJs
+   (the two gyroid sheets and the flat domain-boundary closing caps).
+4. Optionally auto-decimate the triangle mesh with Open3D QEM if the input/target
+   ratio exceeds --max-ratio (prevents OOM in QuadriFlow).
+5. Optionally apply Taubin low-pass smoothing (λ=0.5, μ=−0.53) to reduce
+   high-frequency noise before remeshing.
+6. Run either QuadriFlow or Instant Meshes to produce a curvature-aligned quad OBJ.
+7. Repair the output (weld duplicates, remove degenerate/non-manifold faces).
+8. When using the split-surface pipeline, sew the per-sheet OBJs back into a
+   single combined OBJ after per-sheet remeshing and repair.
+
+The params binary format is documented in gyroid_implicit_mesh.cpp and is the
+same format produced by this script and consumed by the C++ mesher.
+
+Usage
+-----
+    python gyroid_to_quad_mesh_qf.py [--config gyroid_case_config.yaml]
+                                     [--ctrl <checkpoint.txt>]
+                                     [--out <output.obj>]
+                                     [--backend quadriflow|instant-meshes]
+                                     [--target-faces N] [--no-split-surfaces]
+"""
 
 from __future__ import annotations
 
@@ -28,6 +58,12 @@ INSTANT_MESHES  = Path("/workspace/instant-meshes/Instant Meshes")
 
 def write_params_binary(path, xmin, xmax, ymin, ymax, zmin, zmax,
                         k_base, half_t, rot_matrix, rbf_field):
+    """Write the binary params file consumed by gyroid_implicit_mesh.cpp.
+
+    Format: magic 'GYROID01' | domain+physics (8 float64) | rotation flag+matrix
+            (1 byte + 9 float64) | RBF flag (1 byte) | [nx,ny,nz, origin, step,
+            grid data] when RBF is present.
+    """
     with open(path, 'wb') as f:
         f.write(b'GYROID01')
         f.write(struct.pack('<8d', xmin, xmax, ymin, ymax, zmin, zmax,
@@ -58,6 +94,7 @@ def write_params_binary(path, xmin, xmax, ymin, ymax, zmin, zmax,
 # ── Compile helper ─────────────────────────────────────────────────────────────
 
 def _compile(src: Path, out: Path) -> None:
+    """Compile src with g++ -O3 if the binary is older than the source."""
     if out.exists() and out.stat().st_mtime >= src.stat().st_mtime:
         print(f"[build] {out.name} is up to date")
         return

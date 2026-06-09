@@ -105,6 +105,7 @@ def catmull_clark(verts: np.ndarray, quads: np.ndarray,
 
 
 def _cc_step(V: np.ndarray, F: np.ndarray):
+    """One Catmull-Clark subdivision step.  Returns (new_V, new_F) with 4× the faces."""
     nV, nF = len(V), len(F)
 
     # ── face points ──────────────────────────────────────────────────────────
