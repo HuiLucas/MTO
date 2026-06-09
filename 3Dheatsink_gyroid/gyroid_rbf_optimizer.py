@@ -1,44 +1,4 @@
-"""
-Gyroid RBF Optimizer for the 3D heat-sink MTO case.
 
-Replaces the internal SIMP/MMA density parameterisation with a Gyroid TPMS
-geometry parameterised by RBF control-point spatial-frequency perturbations.
-
-Design variables:
-    frequency perturbation (dk_x, dk_y, dk_z) at each RBF control point on a
-    regular grid.  The spatially-varying frequency at a cell centre is:
-        k_a(x,y,z) = k_base + RBF(dk_a_ctrl)(x,y,z)
-    Total: n_ctrl * 3 scalars.
-
-Gyroid TPMS implicit surface:
-    G(x,y,z) = sin(kx*x)*cos(ky*y)
-              + sin(ky*y)*cos(kz*z)
-              + sin(kz*z)*cos(kx*x)  = 0
-    SDF = |G| - half_thickness
-    gamma = sigmoid(SDF / epsilon)   (1 → fluid, 0 → solid)
-
-Each outer optimisation iteration:
-    1. Given current control-point frequency perturbations dk, build an
-       RBFFrequencyField (thin-plate-spline).
-    2. Evaluate the Gyroid SDF at every mesh cell centre.
-    3. Map SDF → gamma via a smooth Heaviside (sigmoid).
-    4. Write the gamma field to the OpenFOAM case directory.
-    5. Set controlDict startTime/endTime so the solver runs exactly ONE outer
-       iteration, then exits.
-    6. Run the OpenFOAM MTO_TF solver (serial or parallel).
-    7. Read fsens = dJ/d(gamma) from the solver output.
-    8. Chain-rule: dJ/d(dk_ctrl) via analytic Gyroid derivatives and the RBF
-       evaluation Jacobian.
-    9. Feed (objective, gradient) to scipy L-BFGS-B for the next step.
-
-Usage
------
-    python gyroid_rbf_optimizer.py [--case app] [--iters 50] [--parallel 20]
-
-Dependencies
-------------
-    numpy, scipy (standard scientific Python)
-"""
 
 from __future__ import annotations
 
@@ -1331,8 +1291,8 @@ class GyroidRBFOptimizer:
             f.write(
                 "iter       mode         J_meanT      J_obj        J_aug        DissPower     outletT    solid_frac  "
                 "solid_g    flow_m3s   deltaP_m2s2  wall_thickness        g_meanT    pen_meanT  "
-                "g_disspower  pen_disspower  mu_penalty        "
-                "g_oh    pen_oh    mu_oh    grad_norm  delta_x    elapsed_s  alphaMax\n"
+                "g_disspower  pen_disspower  mu_penalty    "
+                "g_oh        pen_oh    mu_oh    grad_norm  delta_x    elapsed_s  alphaMax\n"
             )
             if self._history_prefix_text:
                 f.write(self._history_prefix_text)

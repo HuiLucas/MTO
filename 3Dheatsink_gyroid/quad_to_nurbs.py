@@ -316,7 +316,7 @@ def main():
     )
     parser.add_argument('input',   type=Path, help='Input quad OBJ')
     parser.add_argument('output',  type=Path, help='Output STEP file')
-    parser.add_argument('--subd',     type=int,   default=2,
+    parser.add_argument('--subd',     type=int,   default=1,
                         help='Catmull-Clark subdivision levels (0 = no subdivision)')
     parser.add_argument('--deg-min',  type=int,   default=3, dest='deg_min',
                         help='Minimum B-spline degree')

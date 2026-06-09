@@ -20,40 +20,40 @@ FoamFile
     {
         type            patch;
         nFaces          0;
-        startFace       148800;
+        startFace       149016;
     }
     outlet
     {
         type            patch;
         nFaces          0;
-        startFace       148800;
+        startFace       149016;
     }
     wall
     {
         type            wall;
         inGroups        List<word> 1(wall);
-        nFaces          2880;
-        startFace       148800;
+        nFaces          4218;
+        startFace       149016;
     }
     force
     {
         type            patch;
-        nFaces          2560;
-        startFace       151680;
+        nFaces          1350;
+        startFace       153234;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
         nFaces          0;
-        startFace       154240;
+        startFace       154584;
     }
     procBoundary1to0
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          2560;
-        startFace       154240;
+        nFaces          1350;
+        startFace       154584;
         matchTolerance  0.0001;
         myProcNo        1;
         neighbProcNo    0;
@@ -62,8 +62,8 @@ FoamFile
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1600;
-        startFace       156800;
+        nFaces          2850;
+        startFace       155934;
         matchTolerance  0.0001;
         myProcNo        1;
         neighbProcNo    3;

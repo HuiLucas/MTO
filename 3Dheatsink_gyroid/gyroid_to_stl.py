@@ -1,31 +1,3 @@
-#!/usr/bin/env python3
-"""
-gyroid_to_stl.py  –  Extract the gyroid wall surface as a high-resolution STL.
-
-The isosurface extracted is:
-
-    |G(x,y,z)| - half_thickness = 0       (i.e. the solid/fluid interface)
-
-where
-    G  = sin(kx·x)·cos(ky·y) + sin(ky·y)·cos(kz·z) + sin(kz·z)·cos(kx·x)
-    kx, ky, kz  =  k_base  +  RBF(dk_ctrl)(x, y, z)
-
-Usage
------
-    python gyroid_to_stl.py \\
-        [--ctrl  app/gyroid_ctrl_pts_checkpoint.txt] \\
-        [--out   gyroid_surface.stl] \\
-        [--unit  1.5]    # gyroid cell size in mm  → sets k_base
-        [--wall  0.60]   # wall thickness in mm
-        [--res   0.025]  # voxel size in mm (lower = higher definition)
-        [--xmin 0] [--xmax 4] [--ymin 0] [--ymax 2.5] [--zmin 0] [--zmax 10]
-        [--mirror-y]     # mirror the half-domain across y=ymax to get the full part
-        [--config gyroid_case_config.yaml]   # read unit/wall from YAML instead
-
-Dependencies
-------------
-    numpy, scipy, scikit-image  (pip install scikit-image)
-"""
 
 from __future__ import annotations
 
@@ -343,6 +315,7 @@ def read_yaml_params(yaml_path: Path) -> dict:
         opt = cfg.get('optimization', {})
         params['unit']   = float(opt.get('unit', 1.5))
         params['wall']   = float(opt.get('wall', 0.30))
+        params['bake_spacing'] = float(opt.get('bake_spacing', 0.3))
         params['kbound'] = float(opt.get('kbound', 2.0))
         geo = cfg.get('geometry', {})
         origin = geo.get('origin_mm', [0.0, 0.0, 0.0])
@@ -411,6 +384,7 @@ def main() -> None:
                     zmin=0.0, zmax=10.0,
                     encap_wall_mm=0.0,
                     encap_open_faces=['zmin', 'zmax'],
+                    bake_spacing=0.3,
                     gyroid_rot_vec=None)
 
     # Pre-scan for --config so we can load it before argparse finalises defaults
@@ -440,7 +414,7 @@ def main() -> None:
                         help='Minimum physical wall thickness in mm (must match optimizer --wall)')
     parser.add_argument('--kbound',  type=float, default=defaults['kbound'],
                         help='±bound on dk in rad/mm (must match optimizer --kbound); used to compute G-threshold')
-    parser.add_argument('--res',     type=float, default=0.008,
+    parser.add_argument('--res',     type=float, default=0.40,
                         help='Voxel size in mm – smaller = higher definition')
     parser.add_argument('--target-faces', type=int, default=5_000_000,
                         help='Maximum face count after in-memory mesh decimation')
@@ -452,7 +426,7 @@ def main() -> None:
     parser.add_argument('--zmax',    type=float, default=defaults['zmax'])
     parser.add_argument('--mirror-y', action='store_true',
                         help='Mirror across y = ymax to reconstruct the full part from a half-symmetry domain')
-    parser.add_argument('--bake',    type=float, default=0.3,
+    parser.add_argument('--bake',    type=float, default=defaults['bake_spacing'],
                         help='RBF bake-grid spacing in mm (controls RBF evaluation accuracy)')
     parser.add_argument('--encap-wall', type=float, default=defaults['encap_wall_mm'],
                         dest='encap_wall',
@@ -674,6 +648,7 @@ def main() -> None:
         del ch_pos_closed, ch_neg_closed
 
     print(f"\n  Done.")
+    print(f"Print direction: {defaults['gyroid_rot_vec']}")
 
 
 if __name__ == '__main__':

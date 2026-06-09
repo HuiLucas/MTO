@@ -14,46 +14,46 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-8
+9
 (
     inlet
     {
         type            patch;
         nFaces          0;
-        startFace       148800;
+        startFace       147012;
     }
     outlet
     {
         type            patch;
         nFaces          0;
-        startFace       148800;
+        startFace       147012;
     }
     wall
     {
         type            wall;
         inGroups        List<word> 1(wall);
-        nFaces          1280;
-        startFace       148800;
+        nFaces          1350;
+        startFace       147012;
     }
     force
     {
         type            patch;
-        nFaces          2560;
-        startFace       150080;
+        nFaces          1350;
+        startFace       148362;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
         nFaces          0;
-        startFace       152640;
+        startFace       149712;
     }
     procBoundary5to3
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1600;
-        startFace       152640;
+        nFaces          2829;
+        startFace       149712;
         matchTolerance  0.0001;
         myProcNo        5;
         neighbProcNo    3;
@@ -62,18 +62,28 @@ FoamFile
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          2560;
-        startFace       154240;
+        nFaces          1401;
+        startFace       152541;
         matchTolerance  0.0001;
         myProcNo        5;
         neighbProcNo    4;
+    }
+    procBoundary5to6
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          2;
+        startFace       153942;
+        matchTolerance  0.0001;
+        myProcNo        5;
+        neighbProcNo    6;
     }
     procBoundary5to7
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1600;
-        startFace       156800;
+        nFaces          2794;
+        startFace       153944;
         matchTolerance  0.0001;
         myProcNo        5;
         neighbProcNo    7;

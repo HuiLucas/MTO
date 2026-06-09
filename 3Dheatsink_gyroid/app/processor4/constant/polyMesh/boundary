@@ -14,56 +14,66 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-8
+9
 (
     inlet
     {
         type            patch;
         nFaces          0;
-        startFace       148800;
+        startFace       147012;
     }
     outlet
     {
         type            patch;
         nFaces          0;
-        startFace       148800;
+        startFace       147012;
     }
     wall
     {
         type            wall;
         inGroups        List<word> 1(wall);
-        nFaces          1280;
-        startFace       148800;
+        nFaces          1350;
+        startFace       147012;
     }
     force
     {
         type            patch;
         nFaces          0;
-        startFace       150080;
+        startFace       148362;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
-        nFaces          2560;
-        startFace       150080;
+        nFaces          1350;
+        startFace       148362;
     }
     procBoundary4to2
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1600;
-        startFace       152640;
+        nFaces          2794;
+        startFace       149712;
         matchTolerance  0.0001;
         myProcNo        4;
         neighbProcNo    2;
+    }
+    procBoundary4to3
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          2;
+        startFace       152506;
+        matchTolerance  0.0001;
+        myProcNo        4;
+        neighbProcNo    3;
     }
     procBoundary4to5
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          2560;
-        startFace       154240;
+        nFaces          1401;
+        startFace       152508;
         matchTolerance  0.0001;
         myProcNo        4;
         neighbProcNo    5;
@@ -72,8 +82,8 @@ FoamFile
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1600;
-        startFace       156800;
+        nFaces          2829;
+        startFace       153909;
         matchTolerance  0.0001;
         myProcNo        4;
         neighbProcNo    6;

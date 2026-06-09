@@ -22,7 +22,7 @@ actions
         type    cellSet;
         action  new;
         source  boxToCell;
-        box     (2 2 2) (2.1 2.1 2.1);
+        box     (31 31 31) (31.1 31.1 31.1);
     }
     {
         name    zone_test;
@@ -37,7 +37,7 @@ actions
         type    cellSet;
         action  new;
         source  boxToCell;
-        box     (2 2 2) (2.1 2.1 2.1);
+        box     (31 31 31) (31.1 31.1 31.1);
     }
     {
         name    zone_solid;
@@ -52,7 +52,7 @@ actions
         type    cellSet;
         action  new;
         source  boxToCell;
-        box     (2 2 2) (2.1 2.1 2.1);
+        box     (31 31 31) (31.1 31.1 31.1);
     }
     {
         name    zone_fluid;

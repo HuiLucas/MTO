@@ -1,40 +1,4 @@
-#!/usr/bin/env python3
-"""
-gyroid_to_quad_mesh_qf.py — CGAL implicit mesh → curvature-aligned quad mesh.
 
-Backends
---------
-  quadriflow   (default) Global cross-field + integer parameterisation.
-               Best quad quality; OOMs/segfaults above ~100k target faces.
-  instant-meshes         Local greedy orientation + position field.
-               Scales to millions of faces; slightly lower regularity.
-
-Pipeline
---------
-1. Read gyroid_case_config.yaml + ctrl pts, bake RBF field.
-2. Write binary params file for the CGAL C++ mesher.
-3. Run gyroid_implicit_mesh (CGAL): meshes |G(p)| − half_t with closing caps,
-   repairs to manifold, writes a triangle OBJ.
-4. Run chosen backend on the triangle OBJ → curvature-aligned quad OBJ.
-
-Usage
------
-    python gyroid_to_quad_mesh_qf.py
-        [--backend  quadriflow|instant-meshes]   (default: quadriflow)
-        [--config   gyroid_case_config.yaml]
-        [--ctrl     app/gyroid_ctrl_pts_checkpoint.txt]
-        [--out      gyroid_implicit_qf.obj]
-        [--angular  30]        CGAL angle bound (deg)
-        [--radius   0.15]      CGAL circumradius bound (mm)
-        [--distance 0.07]      CGAL surface-deviation bound (mm)
-        [--target-faces N]     target quad count  (default 20000)
-        [--crease   25]        dihedral-angle crease threshold (instant-meshes only)
-        [--smooth   2]         smoothing/reprojection steps   (instant-meshes only)
-        [--no-adaptive]        disable QuadriFlow adaptive density
-        [--no-boundary]        disable boundary preservation (both backends)
-        [--no-sharp]           disable sharp-feature preservation (QuadriFlow)
-        [--seed N]             QuadriFlow RNG seed (default 42)
-"""
 
 from __future__ import annotations
 
@@ -293,7 +257,7 @@ def main() -> None:
     # ── Defaults from YAML ────────────────────────────────────────────────────
     defaults = dict(unit=1.5, wall=0.30, kbound=2.0,
                     xmin=0.0, xmax=5.0, ymin=0.0, ymax=2.5,
-                    zmin=0.0, zmax=10.0, gyroid_rot_vec=None)
+                    zmin=0.0, zmax=10.0, gyroid_rot_vec=None, bake_spacing=0.3)
 
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument('--config', default=None)
@@ -313,7 +277,7 @@ def main() -> None:
     parser.add_argument('--out',      default=str(_DIR / 'gyroid_implicit_qf.obj'))
     parser.add_argument('--unit',     type=float, default=defaults['unit'])
     parser.add_argument('--wall',     type=float, default=defaults['wall'])
-    parser.add_argument('--bake',     type=float, default=0.3)
+    parser.add_argument('--bake',     type=float, default=defaults['bake_spacing'])
     parser.add_argument('--xmin',     type=float, default=defaults['xmin'])
     parser.add_argument('--xmax',     type=float, default=defaults['xmax'])
     parser.add_argument('--ymin',     type=float, default=defaults['ymin'])
@@ -324,16 +288,16 @@ def main() -> None:
     # CGAL meshing criteria
     parser.add_argument('--angular',  type=float, default=30.0,
                         help='CGAL angular bound (deg)')
-    parser.add_argument('--radius',   type=float, default=0.15,
+    parser.add_argument('--radius',   type=float, default=1.00,
                         help='CGAL circumradius bound (mm) — controls triangle density')
-    parser.add_argument('--distance', type=float, default=0.07,
+    parser.add_argument('--distance', type=float, default=3.50,
                         help='CGAL surface-deviation bound (mm) — curvature-adaptive')
 
     # QuadriFlow parameters
-    parser.add_argument('--target-faces', type=int, default=20_000,
+    parser.add_argument('--target-faces', type=int, default=50_000,
                         dest='target_faces',
                         help='Number of quads the remesher should produce')
-    parser.add_argument('--backend', default='quadriflow',
+    parser.add_argument('--backend', default='instant-meshes',
                         choices=['quadriflow', 'instant-meshes'],
                         help='Quad remeshing backend (default: quadriflow)')
     # QuadriFlow-specific
@@ -360,24 +324,23 @@ def main() -> None:
                              'mesh before remeshing (0 = disabled, default 10)')
 
     # Split-surface pipeline
-    parser.add_argument('--split-surfaces', action='store_true',
-                        dest='split_surfaces',
-                        help='Run split-surface pipeline: process plus/minus/sides '
-                             'independently then sew back together')
+    parser.add_argument('--no-split-surfaces', action='store_true',
+                        dest='no_split_surfaces',
+                        help='Disable split-surface pipeline (default: split-surface is on)')
     parser.add_argument('--no-taubin-sides', action='store_true',
                         dest='no_taubin_sides',
-                        help='(--split-surfaces) skip Taubin smoothing on the sides surface')
+                        help='(split-surfaces) skip Taubin smoothing on the sides surface')
     parser.add_argument('--quads-sides', action='store_true',
                         dest='quads_sides',
-                        help='(--split-surfaces) also run quad remesher on the sides surface '
+                        help='(split-surfaces) also run quad remesher on the sides surface '
                              '(default: leave sides as triangles)')
-    parser.add_argument('--no-sides', action='store_true',
-                        dest='no_sides',
-                        help='(--split-surfaces) omit the closing sides; output only the '
-                             'G=+half_t and G=-half_t iso-surfaces (open mesh)')
-    parser.add_argument('--weld-tol',  type=float, default=0.01,
+    parser.add_argument('--sides', action='store_true',
+                        dest='sides',
+                        help='(split-surfaces) include the closing side surfaces; '
+                             'default is open mesh (plus + minus sheets only)')
+    parser.add_argument('--weld-tol',  type=float, default=0.50,
                         dest='weld_tol',
-                        help='(--split-surfaces) vertex weld tolerance for sewing seams (mm)')
+                        help='(split-surfaces) vertex weld tolerance for sewing seams (mm)')
 
     args = parser.parse_args()
 
@@ -457,7 +420,8 @@ def main() -> None:
         "--distance", str(args.distance),
         # Output is .obj → gyroid_implicit_mesh auto-selects repair+write_OBJ
     ]
-    if args.split_surfaces:
+    split_surfaces = not args.no_split_surfaces
+    if split_surfaces:
         cmd_mesh.append("--split")
     print(f"  {' '.join(cmd_mesh)}\n")
     t0 = time.time()
@@ -469,7 +433,7 @@ def main() -> None:
     print(f"\n  Triangle OBJ: {tri_obj.name}  ({tri_mb:.1f} MB)  [{elapsed:.1f}s]")
 
     # ── Split-surface pipeline ────────────────────────────────────────────────
-    if args.split_surfaces:
+    if split_surfaces:
         stem = tri_obj.stem
         # C++ strips _tri suffix when deriving split paths; match that here
         base_stem = stem[:-4] if stem.endswith('_tri') else stem
@@ -485,7 +449,7 @@ def main() -> None:
             print(f"  {label}: {n:,} triangles  ({p.stat().st_size/1e6:.2f} MB)")
 
         final_outputs: list[Path] = []
-        surface_labels = ['plus', 'minus'] if args.no_sides else ['plus', 'minus', 'sides']
+        surface_labels = ['plus', 'minus', 'sides'] if args.sides else ['plus', 'minus']
 
         for label in surface_labels:
             src = split_tri[label]
@@ -603,7 +567,7 @@ def main() -> None:
             final_outputs.append(surface_out)
 
         # ── Sew surfaces together ─────────────────────────────────────────────
-        parts_desc = "plus + minus" if args.no_sides else "plus + minus + sides"
+        parts_desc = "plus + minus + sides" if args.sides else "plus + minus"
         print(f"\n  Sewing {parts_desc} → {out_path.name} …")
         sew_stats = _sew_meshes(final_outputs, args.weld_tol, out_path)
         print(f"  Sew: {sew_stats['seam_welded']} vertices welded at seams")
@@ -746,6 +710,8 @@ def main() -> None:
         obj_mb = out_path.stat().st_size / 1e6
         print(f"\n  Quad OBJ: {out_path.name}  ({obj_mb:.1f} MB)  [{elapsed:.1f}s]")
     print(f"\n  Done.  Output: {out_path}")
+    print(f"Print direction: {defaults['gyroid_rot_vec']}")
+
 
 
 if __name__ == '__main__':
