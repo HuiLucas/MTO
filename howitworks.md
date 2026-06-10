@@ -29,7 +29,7 @@ Read the yaml file to choose the correct inputs
 
 ## TODO:
 - Add pySLM's getoverhangMesh and printtime estimator. Add supports for overhanging downskins that are larger than the maximum bridge length.
-- Run once with very fine grid, small unit size, small wall thickness, so that it is actually printable.
+- Run once with very fine grid, small unit size, small wall thickness, so that it is actually printable. Use extra low darcy number and low epsilon.
 - Truly parallelize
 - Initialize using gyroid with holes in straight line from entrance to exit. Step 2: make it possible for this line to go around corners if the geometry is complex
 - Fix scale
