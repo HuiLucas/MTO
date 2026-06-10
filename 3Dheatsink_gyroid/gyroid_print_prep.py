@@ -359,7 +359,13 @@ def _init_hatch_worker(vertices: np.ndarray, faces: np.ndarray,
 
 
 def _hatch_layer(task: tuple) -> tuple:
-    """Slice and hatch a single layer in a worker process. Returns (scan_time_s, has_geometry)."""
+    """Slice and hatch a single layer in a worker process.
+
+    Returns (scan_time_s, has_geometry, failed). `failed` is True if
+    pyslm.hatching.Hatcher.hatch() raised on this slice (it can do so for
+    certain degenerate cross-sections); such layers are excluded from the
+    scan-time sum rather than aborting the whole estimate.
+    """
     z, hatch_angle = task
     hp = _worker_hatch_params
 
@@ -373,18 +379,22 @@ def _hatch_layer(task: tuple) -> tuple:
 
     boundary = _worker_part.getVectorSlice(z)
     if not boundary:
-        return 0.0, False
+        return 0.0, False, False
 
-    layer = hatcher.hatch(boundary)
+    try:
+        layer = hatcher.hatch(boundary)
+    except Exception:
+        return 0.0, False, True
+
     if layer is None:
-        return 0.0, False
+        return 0.0, False, False
 
     model = _worker_models[0]
     for lg in layer.geometry:
         lg.mid = model.mid
         lg.bid = model.buildStyles[0].bid
 
-    return float(getLayerTime(layer, _worker_models)), True
+    return float(getLayerTime(layer, _worker_models)), True, False
 
 
 def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: float, hatch_angle: float,
@@ -413,6 +423,7 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
 
     scan_time_sampled = 0.0
     n_with_geometry = 0
+    n_failed = 0
     t0 = time.time()
 
     if num_workers > 1 and len(tasks) > 1:
@@ -421,9 +432,10 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
         with ctx.Pool(processes=num_workers, initializer=_init_hatch_worker,
                        initargs=(part.geometry.vertices, part.geometry.faces,
                                  hatch_params, model_params)) as pool:
-            for i, (scan_time, has_geom) in enumerate(pool.imap_unordered(_hatch_layer, tasks)):
+            for i, (scan_time, has_geom, failed) in enumerate(pool.imap_unordered(_hatch_layer, tasks)):
                 scan_time_sampled += scan_time
                 n_with_geometry += int(has_geom)
+                n_failed += int(failed)
                 if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
                     elapsed = time.time() - t0
                     print(f"    ... {i + 1:,}/{len(tasks):,} sampled layers ({elapsed:.1f}s elapsed)", end='\r')
@@ -446,7 +458,11 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
             hatcher.hatchAngle = ha
             boundary = part.getVectorSlice(z)
             if boundary:
-                layer = hatcher.hatch(boundary)
+                try:
+                    layer = hatcher.hatch(boundary)
+                except Exception:
+                    layer = None
+                    n_failed += 1
                 if layer is not None:
                     for lg in layer.geometry:
                         lg.mid = model.mid
@@ -461,6 +477,11 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
     if len(tasks) > 0:
         print()
 
+    if n_failed > 0:
+        print(f"  WARNING: {n_failed:,}/{len(tasks):,} sampled layer(s) raised in Hatcher.hatch() "
+              f"(degenerate cross-section) and were excluded from the scan-time sum; "
+              f"the estimate may be slightly low.")
+
     scale = (n_total / len(sampled)) if len(sampled) > 0 else 0.0
     scan_time_total = scan_time_sampled * scale
     recoat_time_total = n_total * recoater_time
@@ -470,6 +491,7 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
         n_total_layers=n_total,
         n_sampled_layers=len(sampled),
         n_sampled_with_geometry=n_with_geometry,
+        n_sampled_failed=n_failed,
         scan_time_s=scan_time_total,
         recoat_time_s=recoat_time_total,
         build_time_s=build_time_total,
@@ -602,7 +624,8 @@ def main() -> None:
 
         print(f"\n  Total layers          : {stats['n_total_layers']:,}")
         print(f"  Sampled layers        : {stats['n_sampled_layers']:,} "
-              f"({stats['n_sampled_with_geometry']:,} with geometry)")
+              f"({stats['n_sampled_with_geometry']:,} with geometry, "
+              f"{stats['n_sampled_failed']:,} failed)")
         print(f"  Estimated scan time   : {_format_duration(stats['scan_time_s'])}")
         print(f"  Recoat time           : {_format_duration(stats['recoat_time_s'])}")
         print(f"  Estimated build time  : {_format_duration(stats['build_time_s'])}")
