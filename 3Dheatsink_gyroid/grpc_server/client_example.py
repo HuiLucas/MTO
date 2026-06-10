@@ -79,6 +79,27 @@ Commands
                                    Download the OBJ (quad mesh) or STEP (NURBS) file
                                    Defaults: sheet=plus  format=step  out_dir=.
 
+  --- Print preparation ---
+  print-prep [--num-workers] [--max-bridge-length] [--build-direction] [--skip-print-time] [extra_args ...]
+                                    Run gyroid_print_prep.py on the server
+                                    --num-workers sets the number of worker processes used to
+                                    slice & hatch sampled layers in parallel (default: 1)
+                                    --max-bridge-length sets the self-supporting span (mm)
+                                    before a downskin island needs support (default: 1.5)
+                                    --build-direction sets the build-up direction:
+                                    'x'/'y'/'z' or 'bx,by,bz' (default: from config, or 'z')
+                                    --skip-print-time skips the (slow) print-time estimate
+                                    Outputs (next to the input STL):
+                                      <stem>_build.stl     - mesh re-oriented into the build direction
+                                      <stem>_overhang.stl  - downskin/overhang surface
+                                      <stem>_supports.stl  - generated support structures
+  print-prep-stop                  Stop the running print-prep process
+  print-prep-status                Show print-prep process state
+  print-prep-stream                Tail live print-prep output
+  download-print-prep [build|overhang|supports] [out_dir]
+                                   Download a generated STL from the print-prep pipeline
+                                   Defaults: which=build  out_dir=.
+
 For the "extra args", go to the server source code in https://github.com/HuiLucas/MTO
 
 """
@@ -370,6 +391,50 @@ def cmd_download_nurbs(stub, args):
     _save_chunks(chunks, out_dir)
 
 
+def cmd_print_prep(stub, args):
+    resp = stub.StartPrintPrep(pb2.PrintPrepRequest(extra_args=args.extra_args))
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_print_prep_stop(stub, _args):
+    resp = stub.StopPrintPrep(pb2.Empty())
+    print(resp.message)
+    if not resp.success:
+        sys.exit(1)
+
+
+def cmd_print_prep_status(stub, _args):
+    resp = stub.GetPrintPrepStatus(pb2.Empty())
+    state_name = pb2.RunStatusResponse.State.Name(resp.state)
+    print(f"State      : {state_name}")
+    print(f"PID        : {resp.pid or '—'}")
+    print(f"Return code: {resp.return_code}")
+    print(f"Message    : {resp.message}")
+
+
+def cmd_print_prep_stream(stub, _args):
+    print("[streaming print-prep output — Ctrl-C to quit]\n")
+    try:
+        for line in stub.StreamPrintPrepOutput(pb2.Empty()):
+            ts = time.strftime("%H:%M:%S", time.localtime(line.timestamp_ms / 1000))
+            print(f"[{ts}] {line.line}")
+    except KeyboardInterrupt:
+        print("\n[stream closed]")
+    except grpc.RpcError as exc:
+        print(f"gRPC error: {exc.details()}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_download_print_prep(stub, args):
+    which   = getattr(args, "which", "build") or "build"
+    out_dir = Path(args.out_dir) if hasattr(args, "out_dir") and args.out_dir else Path(".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    chunks = stub.DownloadPrintPrepFile(pb2.PrintPrepFileRequest(which=which))
+    _save_chunks(chunks, out_dir)
+
+
 def _save_chunks(stream, out_dir: Path) -> None:
     out_path: Path | None = None
     fh = None
@@ -480,6 +545,23 @@ def main() -> None:
                    help="File format: obj (quad mesh) or step (NURBS, default)")
     p.add_argument("out_dir", nargs="?", default=".")
 
+    p = sub.add_parser("print-prep",
+                       help="Run gyroid_print_prep.py on the server")
+    p.add_argument("extra_args", nargs="*",
+                   help="Extra flags forwarded to gyroid_print_prep.py, "
+                        "e.g. --num-workers 4 --skip-print-time")
+
+    sub.add_parser("print-prep-stop",   help="Stop the running print-prep process")
+    sub.add_parser("print-prep-status", help="Show print-prep process state")
+    sub.add_parser("print-prep-stream", help="Tail live print-prep output")
+
+    p = sub.add_parser("download-print-prep",
+                       help="Download a generated STL from the print-prep pipeline")
+    p.add_argument("which", nargs="?", default="build",
+                   choices=["build", "overhang", "supports"],
+                   help="build (default), overhang, or supports")
+    p.add_argument("out_dir", nargs="?", default=".")
+
     args = parser.parse_args()
 
     if args.command == "help":
@@ -515,6 +597,11 @@ def main() -> None:
             "nurbs-status":       cmd_nurbs_status,
             "nurbs-stream":       cmd_nurbs_stream,
             "download-nurbs":     cmd_download_nurbs,
+            "print-prep":         cmd_print_prep,
+            "print-prep-stop":    cmd_print_prep_stop,
+            "print-prep-status":  cmd_print_prep_status,
+            "print-prep-stream":  cmd_print_prep_stream,
+            "download-print-prep": cmd_download_print_prep,
         }
         dispatch[args.command](stub, args)
 

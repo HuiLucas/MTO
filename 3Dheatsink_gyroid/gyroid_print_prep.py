@@ -33,7 +33,7 @@ Notes / assumptions
 --------------------
 * "Maximum bridge length" (--max-bridge-length) is the self-supporting span
   (mm) for the chosen process/material. There is no single correct value;
-  ~1.0 mm is a conservative default for laser powder bed fusion of metals.
+  ~1.5 mm is a conservative default for laser powder bed fusion of metals.
   A downskin island's "span" is the short side of the bounding rectangle
   (over all orientations) with the largest aspect ratio - i.e. the width of
   the island measured across its most elongated direction. If that width

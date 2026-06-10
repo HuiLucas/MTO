@@ -40,6 +40,7 @@ WRAPPER          = BASE_DIR / "gyroid_case_wrapper.py"
 STL_SCRIPT       = BASE_DIR / "gyroid_to_stl.py"
 QUAD_MESH_SCRIPT = BASE_DIR / "gyroid_to_quad_mesh_qf.py"
 NURBS_SCRIPT     = BASE_DIR / "quad_to_nurbs.py"
+PRINT_PREP_SCRIPT = BASE_DIR / "gyroid_print_prep.py"
 APP_DIR          = BASE_DIR / "app"
 HISTORY          = APP_DIR  / "gyroid_opt_history.txt"
 
@@ -58,6 +59,13 @@ _NURBS_OBJ = {
 _NURBS_STEP = {
     "plus":  BASE_DIR / "gyroid_implicit_qf_plus.step",
     "minus": BASE_DIR / "gyroid_implicit_qf_minus.step",
+}
+
+# Default outputs of gyroid_print_prep.py for the default --stl (gyroid_surface_lattice.stl)
+_PRINT_PREP_FILES = {
+    "build":    BASE_DIR / "gyroid_surface_lattice_build.stl",
+    "overhang": BASE_DIR / "gyroid_surface_lattice_overhang.stl",
+    "supports": BASE_DIR / "gyroid_surface_lattice_supports.stl",
 }
 
 CHUNK_SIZE  = 64 * 1024  # 64 KB per FileChunk
@@ -212,6 +220,7 @@ _runner           = RunnerState()   # optimizer subprocess
 _stl_runner       = RunnerState()   # gyroid_to_stl.py subprocess
 _quad_mesh_runner = RunnerState()   # gyroid_to_quad_mesh_qf.py subprocess
 _nurbs_runner     = RunnerState()   # quad_to_nurbs.py subprocess
+_print_prep_runner = RunnerState()  # gyroid_print_prep.py subprocess
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -608,6 +617,64 @@ class GyroidOptimizerServicer(pb2_grpc.GyroidOptimizerServicer):
         if not target.exists():
             context.abort(grpc.StatusCode.NOT_FOUND,
                           f"{target.name} not found — run the relevant pipeline first")
+            return
+        try:
+            yield from _stream_file(target, target.name)
+        except Exception as exc:
+            context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+    # ── Print preparation ─────────────────────────────────────────────────────
+
+    def StartPrintPrep(self, request, context):
+        try:
+            _print_prep_runner.start(list(request.extra_args), script=PRINT_PREP_SCRIPT)
+            return pb2.StatusResponse(
+                success=True,
+                message=f"Print prep started (pid={_print_prep_runner.pid})",
+            )
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def StopPrintPrep(self, request, context):
+        try:
+            _print_prep_runner.stop()
+            return pb2.StatusResponse(success=True, message="Print prep stop signal sent")
+        except Exception as exc:
+            return pb2.StatusResponse(success=False, message=str(exc))
+
+    def GetPrintPrepStatus(self, request, context):
+        rc  = _print_prep_runner.return_code
+        pid = _print_prep_runner.pid or 0
+        if _print_prep_runner.is_running:
+            state = pb2.RunStatusResponse.RUNNING
+            msg   = f"Running (pid={pid})"
+        elif rc is None:
+            state = pb2.RunStatusResponse.IDLE
+            msg   = "Idle — no print-prep run has been started yet"
+        elif rc == 0:
+            state = pb2.RunStatusResponse.DONE
+            msg   = "Completed successfully"
+        else:
+            state = pb2.RunStatusResponse.ERROR
+            msg   = f"Exited with return code {rc}"
+        return pb2.RunStatusResponse(state=state, pid=pid, message=msg, return_code=rc or 0)
+
+    def StreamPrintPrepOutput(self, request, context):
+        for entry in _print_prep_runner.output_stream():
+            if not context.is_active():
+                return
+            yield _entry_to_proto(entry)
+
+    def DownloadPrintPrepFile(self, request, context):
+        which = (request.which or "build").lower().strip()
+        target = _PRINT_PREP_FILES.get(which)
+        if target is None:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                          f"Unknown file {which!r}. Use: build, overhang, supports")
+            return
+        if not target.exists():
+            context.abort(grpc.StatusCode.NOT_FOUND,
+                          f"{target.name} not found — run StartPrintPrep first")
             return
         try:
             yield from _stream_file(target, target.name)
