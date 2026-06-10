@@ -350,34 +350,43 @@ def build_freq_field(ctrl_pts_mm: np.ndarray,
 def gyroid_sdf_batch(pts_mm:         np.ndarray,
                      freq_mm:         np.ndarray,
                      half_thickness:  float,
-                     rot_matrix:      np.ndarray | None = None) -> np.ndarray:
+                     rot_matrix:      np.ndarray | None = None,
+                     phase_mm:        np.ndarray | None = None) -> np.ndarray:
     """
     Vectorised Gyroid SDF at an array of points.
 
+    Let phi_a = k_a * coord_a + p_a  (p_a = 0 when phase_mm is None).
+
     Standard (rot_matrix is None):
-        G = sin(kx·x)cos(ky·y) + sin(ky·y)cos(kz·z) + sin(kz·z)cos(kx·x)
+        G = sin(phi_x)cos(phi_y) + sin(phi_y)cos(phi_z) + sin(phi_z)cos(phi_x)
 
     Rotated / flow-aligned (rot_matrix = R):
-        [u,v,w] = R @ [kx·x, ky·y, kz·z]
+        [u,v,w] = R @ [phi_x, phi_y, phi_z]
         G = cos(u)cos(v) + sin(v)cos(w) − sin(w)sin(u)
-        (pi/2 phase-shifted standard gyroid, rotated so channels align with flow)
+        (rotated so channels align with flow; phase shifts surface position)
 
     SDF = |G| − half_thickness
     """
     x  = pts_mm[:, 0];  y  = pts_mm[:, 1];  z  = pts_mm[:, 2]
     kx = freq_mm[:, 0]; ky = freq_mm[:, 1]; kz = freq_mm[:, 2]
 
+    if phase_mm is not None:
+        phi_x = kx*x + phase_mm[:, 0]
+        phi_y = ky*y + phase_mm[:, 1]
+        phi_z = kz*z + phase_mm[:, 2]
+    else:
+        phi_x = kx*x; phi_y = ky*y; phi_z = kz*z
+
     if rot_matrix is not None:
         R = rot_matrix
-        p = kx*x; q = ky*y; r = kz*z
-        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
-        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
-        w = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
+        u = R[0, 0]*phi_x + R[0, 1]*phi_y + R[0, 2]*phi_z
+        v = R[1, 0]*phi_x + R[1, 1]*phi_y + R[1, 2]*phi_z
+        w = R[2, 0]*phi_x + R[2, 1]*phi_y + R[2, 2]*phi_z
         G = np.cos(u)*np.cos(v) + np.sin(v)*np.cos(w) - np.sin(w)*np.sin(u)
     else:
-        G = (np.sin(kx*x) * np.cos(ky*y)
-           + np.sin(ky*y) * np.cos(kz*z)
-           + np.sin(kz*z) * np.cos(kx*x))
+        G = (np.sin(phi_x) * np.cos(phi_y)
+           + np.sin(phi_y) * np.cos(phi_z)
+           + np.sin(phi_z) * np.cos(phi_x))
     return np.abs(G) - half_thickness
 
 
@@ -430,36 +439,45 @@ def build_rbf_jacobian(ctrl_pts_mm:     np.ndarray,
 # ── Chain-rule gradient ────────────────────────────────────────────────────────
 
 def chain_rule_gradient(
-    fsens:          np.ndarray,   # (N,)   dJ/d(gamma)  from OpenFOAM
-    pts_mm:         np.ndarray,   # (N,3)  cell centres (mm)
-    freq_mm:        np.ndarray,   # (N,3)  [kx, ky, kz] at each cell (rad/mm)
-    sdf:            np.ndarray,   # (N,)   Gyroid SDF values
-    epsilon:        float,        # smooth-Heaviside sharpness
-    W:              np.ndarray,   # (N, N_ctrl) RBF Jacobian
+    fsens:          np.ndarray,            # (N,)   dJ/d(gamma)  from OpenFOAM
+    pts_mm:         np.ndarray,            # (N,3)  cell centres (mm)
+    freq_mm:        np.ndarray,            # (N,3)  [kx, ky, kz] at each cell (rad/mm)
+    sdf:            np.ndarray,            # (N,)   Gyroid SDF values
+    epsilon:        float,                 # smooth-Heaviside sharpness
+    W:              np.ndarray,            # (N, N_ctrl) RBF Jacobian
     rot_matrix:     np.ndarray | None = None,
+    phase_mm:       np.ndarray | None = None,  # (N,3)  [px, py, pz] phase offsets (rad)
 ) -> np.ndarray:
     """
-    Compute dJ/d(dk_ctrl) via the full chain rule:
+    Compute dJ/d(dk_ctrl) and, when phase_mm is provided, dJ/d(dp_ctrl).
 
-        dJ/d(dk_{a,l}) = Σ_j  fsens_j · dγ/dSDF_j · sign(G_j) · dG_j/dk_{a,j} · W[j,l]
+    Let phi_a = k_a * coord_a + p_a.  Then:
+        dG/dk_a = coord_a * dG/dphi_a   (frequency gradient)
+        dG/dp_a =           dG/dphi_a   (phase gradient, no coordinate factor)
 
-    Supports both standard and rotated gyroid (see gyroid_sdf_batch).
+    For the rotated formula, [u,v,w] = R @ [phi_x, phi_y, phi_z]:
+        dG/dphi_x = R[0,0]·∂G/∂u + R[1,0]·∂G/∂v + R[2,0]·∂G/∂w
+        dG/dkx    = x · dG/dphi_x
+        dG/dpx    =     dG/dphi_x
 
-    For the rotated formula, [u,v,w] = R @ [kx·x, ky·y, kz·z]:
-        dG/dkx = x · (R[0,0]·∂G/∂u + R[1,0]·∂G/∂v + R[2,0]·∂G/∂w)
-        (and analogously for ky, kz)
-
-    Returns shape (N_ctrl, 3).
+    Returns shape (N_ctrl, 3) when phase_mm is None,
+                  (N_ctrl, 6) when phase_mm is provided (dk columns first, dp last).
     """
     x  = pts_mm[:, 0];  y  = pts_mm[:, 1];  z  = pts_mm[:, 2]
     kx = freq_mm[:, 0]; ky = freq_mm[:, 1]; kz = freq_mm[:, 2]
 
+    if phase_mm is not None:
+        phi_x = kx*x + phase_mm[:, 0]
+        phi_y = ky*y + phase_mm[:, 1]
+        phi_z = kz*z + phase_mm[:, 2]
+    else:
+        phi_x = kx*x; phi_y = ky*y; phi_z = kz*z
+
     if rot_matrix is not None:
         R = rot_matrix
-        p = kx*x; q = ky*y; r = kz*z
-        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
-        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
-        w = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
+        u = R[0, 0]*phi_x + R[0, 1]*phi_y + R[0, 2]*phi_z
+        v = R[1, 0]*phi_x + R[1, 1]*phi_y + R[1, 2]*phi_z
+        w = R[2, 0]*phi_x + R[2, 1]*phi_y + R[2, 2]*phi_z
 
         G     = np.cos(u)*np.cos(v) + np.sin(v)*np.cos(w) - np.sin(w)*np.sin(u)
         signG = np.sign(G)
@@ -468,26 +486,41 @@ def chain_rule_gradient(
         dG_dv = -np.cos(u)*np.sin(v) + np.cos(v)*np.cos(w)
         dG_dw = -np.sin(v)*np.sin(w) - np.cos(w)*np.sin(u)
 
-        # dG/dkα = coord · (R[:,col_α] · [dG_du, dG_dv, dG_dw])
-        dG_dkx = x * (R[0, 0]*dG_du + R[1, 0]*dG_dv + R[2, 0]*dG_dw)
-        dG_dky = y * (R[0, 1]*dG_du + R[1, 1]*dG_dv + R[2, 1]*dG_dw)
-        dG_dkz = z * (R[0, 2]*dG_du + R[1, 2]*dG_dv + R[2, 2]*dG_dw)
+        # dG/dphi_a = R[:,a]^T · [dG_du, dG_dv, dG_dw]  (shared for k and p)
+        Ax = R[0, 0]*dG_du + R[1, 0]*dG_dv + R[2, 0]*dG_dw
+        Ay = R[0, 1]*dG_du + R[1, 1]*dG_dv + R[2, 1]*dG_dw
+        Az = R[0, 2]*dG_du + R[1, 2]*dG_dv + R[2, 2]*dG_dw
+
+        # dG/dkα = coord · Aα  (frequency)
+        dG_dkx = x * Ax;  dG_dky = y * Ay;  dG_dkz = z * Az
+        # dG/dpα = Aα  (phase, no coordinate multiplier)
+        dG_dpx = Ax;      dG_dpy = Ay;      dG_dpz = Az
     else:
-        G     = (np.sin(kx*x) * np.cos(ky*y)
-               + np.sin(ky*y) * np.cos(kz*z)
-               + np.sin(kz*z) * np.cos(kx*x))
+        G     = (np.sin(phi_x) * np.cos(phi_y)
+               + np.sin(phi_y) * np.cos(phi_z)
+               + np.sin(phi_z) * np.cos(phi_x))
         signG = np.sign(G)
-        dG_dkx = x * (np.cos(kx*x)*np.cos(ky*y) - np.sin(kz*z)*np.sin(kx*x))
-        dG_dky = y * (np.cos(ky*y)*np.cos(kz*z) - np.sin(kx*x)*np.sin(ky*y))
-        dG_dkz = z * (np.cos(kz*z)*np.cos(kx*x) - np.sin(ky*y)*np.sin(kz*z))
+
+        # dG/dphi_a (shared for k and p)
+        Ax = np.cos(phi_x)*np.cos(phi_y) - np.sin(phi_z)*np.sin(phi_x)
+        Ay = np.cos(phi_y)*np.cos(phi_z) - np.sin(phi_x)*np.sin(phi_y)
+        Az = np.cos(phi_z)*np.cos(phi_x) - np.sin(phi_y)*np.sin(phi_z)
+
+        dG_dkx = x * Ax;  dG_dky = y * Ay;  dG_dkz = z * Az
+        dG_dpx = Ax;      dG_dpy = Ay;      dG_dpz = Az
 
     dgds = dgamma_dsdf_vals(sdf, epsilon)   # (N,)
+    base = fsens * dgds * signG             # (N,) shared prefactor
 
-    wx = fsens * dgds * signG * dG_dkx     # (N,)
-    wy = fsens * dgds * signG * dG_dky
-    wz = fsens * dgds * signG * dG_dkz
+    wx = base * dG_dkx;  wy = base * dG_dky;  wz = base * dG_dkz
+    grad_dk = np.stack([W.T @ wx, W.T @ wy, W.T @ wz], axis=1)  # (N_ctrl, 3)
 
-    return np.stack([W.T @ wx, W.T @ wy, W.T @ wz], axis=1)  # (N_ctrl, 3)
+    if phase_mm is not None:
+        wpx = base * dG_dpx;  wpy = base * dG_dpy;  wpz = base * dG_dpz
+        grad_dp = np.stack([W.T @ wpx, W.T @ wpy, W.T @ wpz], axis=1)  # (N_ctrl, 3)
+        return np.concatenate([grad_dk, grad_dp], axis=1)              # (N_ctrl, 6)
+
+    return grad_dk  # (N_ctrl, 3) – backward compatible
 
 
 # ── OpenFOAM runner ────────────────────────────────────────────────────────────
@@ -852,6 +885,9 @@ class GyroidRBFOptimizer:
         am_P_bar:        float = 0.01,
         am_mu_overhang:  float = 1.0,
         use_overhang:    bool  = True,
+        # ── Phase optimisation ────────────────────────────────────────────────
+        optimize_phase:  bool  = False,
+        p_amp_bound:     float = math.pi,
         # ── Optimisation mode ─────────────────────────────────────────────────
         mode:              str   = 'heat',   # 'heat' or 'pressure'
         target_meanT:     float | None = None,
@@ -885,6 +921,8 @@ class GyroidRBFOptimizer:
                 f"Maximum feasible wall_mm = {_G_MAX / (0.5 * k_base * _GYROID_GRAD_MAX) * 0.99:.4f} mm."
             )
         self.epsilon        = epsilon
+        self.optimize_phase = optimize_phase
+        self.p_amp_bound    = p_amp_bound
         self.solver         = solver
         self.n_procs        = n_procs
         self.solid_density_g_per_mm3 = solid_density_g_per_mm3
@@ -968,6 +1006,8 @@ class GyroidRBFOptimizer:
         self.W = build_rbf_jacobian(self.ctrl_pts_mm, self.cell_centers_mm, bake_spacing)
 
         self.bounds = [(-k_amp_bound, k_amp_bound)] * (self.n_ctrl * 3)
+        if optimize_phase:
+            self.bounds += [(-p_amp_bound, p_amp_bound)] * (self.n_ctrl * 3)
 
         # ── Frequency lower-bound penalty ─────────────────────────────────────
         # Penalise cells where k_eff² < k_base² (period > unit_size → isolated blobs).
@@ -995,29 +1035,49 @@ class GyroidRBFOptimizer:
         else:
             self.am = None
 
-        print(f"\nOptimiser ready. {self.n_ctrl * 3} design variables "
-              f"(±{k_amp_bound:.4f} rad/mm each).\n")
+        n_design = self.n_ctrl * 3 * (2 if optimize_phase else 1)
+        phase_info = (f", {self.n_ctrl * 3} phase ±{p_amp_bound:.4f} rad"
+                      if optimize_phase else "")
+        print(f"\nOptimiser ready. {n_design} design variables "
+              f"({self.n_ctrl * 3} frequency ±{k_amp_bound:.4f} rad/mm{phase_info}).\n")
 
     # ── internals ─────────────────────────────────────────────────────────────
 
     def _dk_to_field(self, x: np.ndarray) -> tuple[RBFFrequencyField, np.ndarray]:
         """Reshape flat x vector → (N_ctrl, 3), build field, return (field, dk_ctrl)."""
-        dk_ctrl = x.reshape(self.n_ctrl, 3)
+        dk_ctrl = x[:self.n_ctrl * 3].reshape(self.n_ctrl, 3)
         field   = build_freq_field(
             self.ctrl_pts_mm, dk_ctrl,
             self.field_min, self.field_max, self.bake_spacing
         )
         return field, dk_ctrl
 
-    def _gamma_from_x(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Compute (gamma, sdf, freq_mm) from flat design vector."""
-        field, _ = self._dk_to_field(x)
-        dk_mm    = field.get_dk_batch(self.cell_centers_mm)       # (N, 3)
+    def _split_x(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Split flat design vector into (dk_ctrl, dp_ctrl), each (N_ctrl, 3).
+
+        When optimize_phase is False, dp_ctrl is zero.
+        """
+        dk_ctrl = x[:self.n_ctrl * 3].reshape(self.n_ctrl, 3)
+        if self.optimize_phase:
+            dp_ctrl = x[self.n_ctrl * 3:].reshape(self.n_ctrl, 3)
+        else:
+            dp_ctrl = np.zeros((self.n_ctrl, 3))
+        return dk_ctrl, dp_ctrl
+
+    def _gamma_from_x(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+        """Compute (gamma, sdf, freq_mm, phase_mm) from flat design vector.
+
+        Uses the precomputed RBF Jacobian W for exact, consistent evaluation.
+        phase_mm is None when optimize_phase is False.
+        """
+        dk_ctrl, dp_ctrl = self._split_x(x)
+        dk_mm    = self.W @ dk_ctrl                                # (N, 3)
         freq_mm  = self.k_base + dk_mm                            # (N, 3) actual k_x,k_y,k_z
+        phase_mm = (self.W @ dp_ctrl) if self.optimize_phase else None
         sdf      = gyroid_sdf_batch(self.cell_centers_mm, freq_mm, self.half_thickness,
-                                    self.rot_matrix)
+                                    self.rot_matrix, phase_mm)
         gamma    = gamma_from_sdf(sdf, self.epsilon)
-        return gamma, sdf, freq_mm
+        return gamma, sdf, freq_mm, phase_mm
 
     def _on_accepted_step(self, xk: np.ndarray) -> None:
         """Commit state updates after SciPy accepts a step."""
@@ -1064,11 +1124,13 @@ class GyroidRBFOptimizer:
         start_t = 0
         end_t   = 1
 
-        gamma, sdf, freq_mm = self._gamma_from_x(x)
+        gamma, sdf, freq_mm, phase_mm = self._gamma_from_x(x)
         print(f"  gamma:  min={gamma.min():.3f}  max={gamma.max():.3f}  "
               f"mean={gamma.mean():.3f}  solid_frac={1-gamma.mean():.3f}")
         dk_mm = freq_mm - self.k_base
         print(f"  dk:     min={dk_mm.min():.4f}  max={dk_mm.max():.4f} rad/mm")
+        if phase_mm is not None:
+            print(f"  dp:     min={phase_mm.min():.4f}  max={phase_mm.max():.4f} rad")
 
         gamma_path = self.case_dir / '0' / 'gamma'
         write_gamma_field(gamma_path, gamma, '0')
@@ -1229,12 +1291,12 @@ class GyroidRBFOptimizer:
         # The overhang penalty depends directly on ∇G (analytic normal), so its
         # gradient is computed separately and added to grad_ctrl.
         am_info = {}
-        grad_ctrl_oh = np.zeros((self.n_ctrl, 3))
+        grad_ctrl_oh = np.zeros((self.n_ctrl, 6 if self.optimize_phase else 3))
         if self.am is not None and self.am.use_overhang:
             J_oh, grad_ctrl_oh, am_info = compute_gyroid_overhang(
                 self.cell_centers_mm, freq_mm, gamma, sdf,
                 self.epsilon, self.am.cos_max, self.am.b_vec,
-                self.am.mu_oh, self.W, self.rot_matrix,
+                self.am.mu_oh, self.W, self.rot_matrix, phase_mm=phase_mm,
             )
             J_aug += J_oh
             print(f"  g_overhang = {am_info['g_oh']:.4g}  "
@@ -1245,11 +1307,13 @@ class GyroidRBFOptimizer:
             'am_info': am_info if self.am is not None else None,
         }
 
+        # chain_rule_gradient returns (N_ctrl, 3) or (N_ctrl, 6) depending on phase_mm
         grad_ctrl = chain_rule_gradient(
             -fsens_aug, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W,
-            self.rot_matrix,
-        ) + grad_ctrl_oh           # (N_ctrl, 3)
-        grad_flat = grad_ctrl.ravel()                # (N_ctrl * 3,)
+            self.rot_matrix, phase_mm,
+        )
+        grad_ctrl = grad_ctrl + grad_ctrl_oh     # (N_ctrl, 3) or (N_ctrl, 6)
+        grad_flat = grad_ctrl.ravel()            # length n_ctrl*3 or n_ctrl*6
 
         elapsed = time.time() - t0
         delta_x_norm = float(np.linalg.norm(x - self._x_prev)) if self._x_prev is not None else float('nan')
@@ -1323,14 +1387,23 @@ class GyroidRBFOptimizer:
                 )
 
     def save_ctrl_pts(self, x: np.ndarray, tag: str = '') -> None:
-        """Save current control-point positions + frequency perturbations to a file."""
-        dk_ctrl  = x.reshape(self.n_ctrl, 3)
+        """Save control-point positions, frequency perturbations, and phase offsets."""
+        dk_ctrl, dp_ctrl = self._split_x(x)
         out_path = self.case_dir / f'gyroid_ctrl_pts{tag}.txt'
         with open(out_path, 'w') as f:
-            f.write("# x_mm  y_mm  z_mm  dk_x_radmm  dk_y_radmm  dk_z_radmm\n")
-            for (px, py, pz), (dkx, dky, dkz) in zip(self.ctrl_pts_mm, dk_ctrl):
-                f.write(f"{px:.4f} {py:.4f} {pz:.4f} "
-                        f"{dkx:.6g} {dky:.6g} {dkz:.6g}\n")
+            if self.optimize_phase:
+                f.write("# x_mm  y_mm  z_mm  dk_x_radmm  dk_y_radmm  dk_z_radmm"
+                        "  dp_x_rad  dp_y_rad  dp_z_rad\n")
+                for (cx, cy, cz), (dkx, dky, dkz), (dpx, dpy, dpz) in zip(
+                        self.ctrl_pts_mm, dk_ctrl, dp_ctrl):
+                    f.write(f"{cx:.4f} {cy:.4f} {cz:.4f} "
+                            f"{dkx:.6g} {dky:.6g} {dkz:.6g} "
+                            f"{dpx:.6g} {dpy:.6g} {dpz:.6g}\n")
+            else:
+                f.write("# x_mm  y_mm  z_mm  dk_x_radmm  dk_y_radmm  dk_z_radmm\n")
+                for (cx, cy, cz), (dkx, dky, dkz) in zip(self.ctrl_pts_mm, dk_ctrl):
+                    f.write(f"{cx:.4f} {cy:.4f} {cz:.4f} "
+                            f"{dkx:.6g} {dky:.6g} {dkz:.6g}\n")
         print(f"  Control points saved → {out_path}")
 
     def reset_run_state(self) -> None:
@@ -1466,11 +1539,13 @@ class GyroidRBFOptimizer:
 
         self.func_callback([self.opt1, self.opt2])
 
-        gamma, sdf, freq_mm = self._gamma_from_x(x)
+        gamma, sdf, freq_mm, phase_mm = self._gamma_from_x(x)
         dk_mm = freq_mm - self.k_base
         print(f"  gamma:  min={gamma.min():.3f}  max={gamma.max():.3f}  "
               f"mean={gamma.mean():.3f}  solid_frac={1-gamma.mean():.3f}")
         print(f"  dk:     min={dk_mm.min():.4f}  max={dk_mm.max():.4f} rad/mm")
+        if phase_mm is not None:
+            print(f"  dp:     min={phase_mm.min():.4f}  max={phase_mm.max():.4f} rad")
 
         gamma_path = self.case_dir / '0' / 'gamma'
         write_gamma_field(gamma_path, gamma, '0')
@@ -1505,13 +1580,13 @@ class GyroidRBFOptimizer:
         # Chain-rule gradients (OpenFOAM fsens convention: field = -dJ/dgamma)
         grad_meanT_ctrl = chain_rule_gradient(
             -fsens_T_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W,
-            self.rot_matrix)
+            self.rot_matrix, phase_mm)
         grad_meanT = grad_meanT_ctrl.ravel()
 
         if fsens_P is not None:
             grad_dissPower_ctrl = chain_rule_gradient(
                 -fsens_P_norm, self.cell_centers_mm, freq_mm, sdf, self.epsilon, self.W,
-                self.rot_matrix)
+                self.rot_matrix, phase_mm)
             grad_dissPower = grad_dissPower_ctrl.ravel()
         else:
             grad_dissPower_ctrl = np.zeros_like(grad_meanT_ctrl)
@@ -1525,13 +1600,15 @@ class GyroidRBFOptimizer:
             grad_obj  = grad_meanT
 
         # Overhang: raw g_oh and its gradient (no penalty scaling)
+        n_design = len(self.bounds)
         g_oh = 0.0
-        grad_g_oh = np.zeros(self.n_ctrl * 3)
+        grad_g_oh = np.zeros(n_design)
         am_info: dict = {}
         if self.am is not None and self.am.use_overhang:
             g_oh, grad_g_oh_ctrl, am_info = compute_gyroid_overhang_raw(
                 self.cell_centers_mm, freq_mm, gamma, sdf,
                 self.epsilon, self.am.cos_max, self.am.b_vec, self.W, self.rot_matrix,
+                phase_mm=phase_mm,
             )
             grad_g_oh = grad_g_oh_ctrl.ravel()
 
@@ -1664,8 +1741,8 @@ class GyroidRBFOptimizer:
             ))
 
         bounds = Bounds(
-            lb=np.full(self.n_ctrl * 3, -self.k_amp_bound),
-            ub=np.full(self.n_ctrl * 3,  self.k_amp_bound),
+            lb=np.array([b[0] for b in self.bounds]),
+            ub=np.array([b[1] for b in self.bounds]),
         )
 
         def callback(xk: np.ndarray, state: object = None) -> None:
@@ -1730,14 +1807,20 @@ class GyroidRBFOptimizer:
                     self._history_prefix_text = '\n'.join(_data) + '\n'
                     print(f"  [restart] Loaded {len(_data)} existing history rows as prefix")
 
+        n_design = len(self.bounds)   # n_ctrl*3 or n_ctrl*6 depending on optimize_phase
         if x0 is not None:
             x_init = x0
         elif load_ctrl is not None:
-            data   = np.loadtxt(load_ctrl)
-            x_init = data[:, 3:6].ravel()   # columns 3-5 are dk_x, dk_y, dk_z
-            print(f"  Warm-started from {load_ctrl}")
+            data = np.loadtxt(load_ctrl)
+            x_init = np.zeros(n_design)
+            x_init[:self.n_ctrl * 3] = data[:, 3:6].ravel()  # dk columns always at 3-5
+            if self.optimize_phase and data.shape[1] >= 9:
+                x_init[self.n_ctrl * 3:] = data[:, 6:9].ravel()  # dp columns at 6-8
+                print(f"  Warm-started from {load_ctrl} (dk + dp)")
+            else:
+                print(f"  Warm-started from {load_ctrl} (dk only; dp initialised to 0)")
         else:
-            x_init = np.zeros(self.n_ctrl * 3)
+            x_init = np.zeros(n_design)
 
         print(f"\nStarting {method} optimisation  ({n_iters} max outer iters)\n")
         self.save_ctrl_pts(x_init, tag='_init')
@@ -1762,7 +1845,7 @@ class GyroidRBFOptimizer:
 
         self.save_ctrl_pts(x_opt, tag='_optimised')
 
-        gamma_final, _, _ = self._gamma_from_x(x_opt)
+        gamma_final, _, _, _ = self._gamma_from_x(x_opt)
         final_path = self.case_dir / '1' / 'gamma_gyroid_final'
         write_gamma_field(final_path, gamma_final, '1')
         print(f"  Final Gyroid gamma written → {final_path}")

@@ -147,6 +147,8 @@ class OptimizationSettings:
     method: str
     build_direction: object | None
     am_align_build_to_flow: bool
+    optimize_phase: bool
+    p_amp_bound: float
 
 
 def _compute_flow_unit_vector(
@@ -430,6 +432,8 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         method=str(optimization_cfg.get('method', 'L-BFGS-B')),
         build_direction=_parse_build_direction(optimization_cfg.get('build_direction', 'z')),
         am_align_build_to_flow=bool(optimization_cfg.get('am_align_build_to_flow', False)),
+        optimize_phase=bool(optimization_cfg.get('optimize_phase', False)),
+        p_amp_bound=float(optimization_cfg.get('p_amp_bound', math.pi)),
     )
 
     run = RunSettings(
@@ -1167,6 +1171,8 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings,
         am_P_bar=optimisation.am_P_bar,
         am_mu_overhang=mu_overhang_override if mu_overhang_override is not None else optimisation.mu_overhang,
         use_overhang=not optimisation.no_overhang,
+        optimize_phase=optimisation.optimize_phase,
+        p_amp_bound=optimisation.p_amp_bound,
         am_build_direction=build_dir,
         mode='pareto' if optimisation.pareto_enabled else optimisation.mode,
         target_meanT=optimisation.meantT_max,

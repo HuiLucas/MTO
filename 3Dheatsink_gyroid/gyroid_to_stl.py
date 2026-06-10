@@ -4,8 +4,11 @@ gyroid_to_stl.py — Export the optimised gyroid wall surface to a binary STL.
 Pipeline
 --------
 1. Load RBF control-point checkpoint (gyroid_ctrl_pts_checkpoint.txt) and bake
-   the thin-plate-spline frequency perturbation field onto a regular grid.
-2. Evaluate f = |G(x,y,z)| − half_thickness over a user-specified voxel grid.
+   the thin-plate-spline frequency perturbation field (dk_x, dk_y, dk_z) onto a
+   regular grid, plus the phase perturbation field (dp_x, dp_y, dp_z) when the
+   checkpoint has 9 columns.
+2. Evaluate f = |G(x,y,z)| − half_thickness over a user-specified voxel grid,
+   with phi_a = k_a·coord_a + p_a substituted for k_a·coord_a.
    Supports both the standard and rotated (flow-aligned) gyroid formulas.
 3. Pad the SDF volume by one voxel of +1 at all faces so marching cubes
    generates flat closing caps at domain boundaries, producing a watertight solid.
@@ -121,34 +124,42 @@ class _BakedRBF:
 
 def gyroid_G(pts_mm: np.ndarray, k_base: float,
              rbf_field: _BakedRBF | None,
-             rot_matrix: np.ndarray | None = None) -> np.ndarray:
+             rot_matrix: np.ndarray | None = None,
+             phase_field: _BakedRBF | None = None) -> np.ndarray:
     """
     Evaluate G at every point in pts_mm (N,3).
 
+    Let phi_a = k_a·coord_a + p_a, where p_a = 0 when phase_field is None
+    (k_a = k_base + dk_a from rbf_field, p_a from phase_field).
+
     Standard (rot_matrix is None):
-        G = sin(kx·x)cos(ky·y) + sin(ky·y)cos(kz·z) + sin(kz·z)cos(kx·x)
+        G = sin(phi_x)cos(phi_y) + sin(phi_y)cos(phi_z) + sin(phi_z)cos(phi_x)
 
     Rotated (rot_matrix = R):
-        [u,v,w] = R @ [kx·x, ky·y, kz·z]
+        [u,v,w] = R @ [phi_x, phi_y, phi_z]
         G = cos(u)cos(v) + sin(v)cos(w) − sin(w)sin(u)
     """
     dk = rbf_field(pts_mm) if rbf_field is not None else np.zeros((len(pts_mm), 3))
+    dp = phase_field(pts_mm) if phase_field is not None else np.zeros((len(pts_mm), 3))
     x  = pts_mm[:, 0]; y = pts_mm[:, 1]; z = pts_mm[:, 2]
     kx = k_base + dk[:, 0]
     ky = k_base + dk[:, 1]
     kz = k_base + dk[:, 2]
 
+    phi_x = kx*x + dp[:, 0]
+    phi_y = ky*y + dp[:, 1]
+    phi_z = kz*z + dp[:, 2]
+
     if rot_matrix is not None:
         R = rot_matrix
-        p = kx*x; q = ky*y; r = kz*z
-        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
-        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
-        w = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
+        u = R[0, 0]*phi_x + R[0, 1]*phi_y + R[0, 2]*phi_z
+        v = R[1, 0]*phi_x + R[1, 1]*phi_y + R[1, 2]*phi_z
+        w = R[2, 0]*phi_x + R[2, 1]*phi_y + R[2, 2]*phi_z
         return np.cos(u)*np.cos(v) + np.sin(v)*np.cos(w) - np.sin(w)*np.sin(u)
 
-    return (np.sin(kx * x) * np.cos(ky * y)
-          + np.sin(ky * y) * np.cos(kz * z)
-          + np.sin(kz * z) * np.cos(kx * x))
+    return (np.sin(phi_x) * np.cos(phi_y)
+          + np.sin(phi_y) * np.cos(phi_z)
+          + np.sin(phi_z) * np.cos(phi_x))
 
 
 def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
@@ -157,6 +168,7 @@ def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
                      batch: int = 500_000,
                      rot_matrix: np.ndarray | None = None,
                      return_raw_G: bool = False,
+                     phase_field: _BakedRBF | None = None,
                      ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """
     Build the scalar volume  f = |G| - half_thickness  over the grid defined
@@ -174,7 +186,7 @@ def build_sdf_volume(xv: np.ndarray, yv: np.ndarray, zv: np.ndarray,
     G   = np.empty(N, dtype=np.float32)
     for i in range(0, N, batch):
         sl = pts[i:i + batch]
-        G[i:i + batch] = gyroid_G(sl, k_base, rbf_field, rot_matrix).astype(np.float32)
+        G[i:i + batch] = gyroid_G(sl, k_base, rbf_field, rot_matrix, phase_field).astype(np.float32)
         if (i // batch) % 20 == 0 and i > 0:
             print(f"  Evaluating G … {i:,}/{N:,}  ({100*i/N:.0f}%)", end='\r')
 
@@ -604,25 +616,38 @@ def main() -> None:
 
     # ── Load control points ────────────────────────────────────────────────────
     rbf_field = None
+    phase_field = None
     if ctrl_path.exists():
         data = np.loadtxt(ctrl_path)
         if data.ndim == 1:
             data = data[np.newaxis, :]
         ctrl_pts = data[:, :3]
         dk_ctrl  = data[:, 3:6]
+        dp_ctrl  = data[:, 6:9] if data.shape[1] >= 9 else None
+
+        bbox_min = ctrl_pts.min(axis=0) - 0.5
+        bbox_max = ctrl_pts.max(axis=0) + 0.5
 
         has_perturbation = np.any(np.abs(dk_ctrl) > 1e-12)
         if has_perturbation:
             print(f"  Control pts: {len(ctrl_pts)}  "
                   f"(dk range [{dk_ctrl.min():.4g}, {dk_ctrl.max():.4g}] rad/mm)")
             print(f"  Building baked RBF field …")
-            bbox_min = ctrl_pts.min(axis=0) - 0.5
-            bbox_max = ctrl_pts.max(axis=0) + 0.5
             rbf_field = _BakedRBF(ctrl_pts, dk_ctrl, bbox_min, bbox_max,
                                   bake_spacing=args.bake)
             print(f"  RBF field ready.")
         else:
             print(f"  Control pts: {len(ctrl_pts)}  (all dk = 0 → uniform gyroid)")
+
+        if dp_ctrl is not None and np.any(np.abs(dp_ctrl) > 1e-12):
+            print(f"  Phase pts  : {len(ctrl_pts)}  "
+                  f"(dp range [{dp_ctrl.min():.4g}, {dp_ctrl.max():.4g}] rad)")
+            print(f"  Building baked phase RBF field …")
+            phase_field = _BakedRBF(ctrl_pts, dp_ctrl, bbox_min, bbox_max,
+                                    bake_spacing=args.bake)
+            print(f"  Phase field ready.")
+        elif dp_ctrl is not None:
+            print(f"  Phase pts  : {len(ctrl_pts)}  (all dp = 0 → no phase shift)")
     else:
         print(f"  WARNING: {ctrl_path} not found – using uniform gyroid (dk = 0)")
 
@@ -638,10 +663,11 @@ def main() -> None:
     print(f"\n  Computing |G| - half_thickness …")
     if args.fluid_stl:
         sdf, G_vol = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field,
-                                      rot_matrix=rot_matrix, return_raw_G=True)
+                                      rot_matrix=rot_matrix, return_raw_G=True,
+                                      phase_field=phase_field)
     else:
         sdf = build_sdf_volume(xv, yv, zv, k_base, half_t, rbf_field,
-                               rot_matrix=rot_matrix)
+                               rot_matrix=rot_matrix, phase_field=phase_field)
         G_vol = None
     print(f"  SDF range: [{sdf.min():.4g}, {sdf.max():.4g}]"
           f"   solid_frac ≈ {(sdf < 0).mean():.3f}")

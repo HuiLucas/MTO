@@ -7,25 +7,25 @@
 \*---------------------------------------------------------------------------*/
 Build  : 11-e1fc8c682ae6
 Exec   : MTO_TF -parallel -case /workspace/MTO/3Dheatsink_gyroid/app
-Date   : Jun 08 2026
-Time   : 18:21:10
+Date   : Jun 10 2026
+Time   : 11:54:21
 Host   : "1d35c23c7b67"
-PID    : 86742
+PID    : 10280
 I/O    : uncollated
 Case   : /workspace/MTO/3Dheatsink_gyroid/app
 nProcs : 10
 Slaves : 
 9
 (
-"1d35c23c7b67.86743"
-"1d35c23c7b67.86744"
-"1d35c23c7b67.86745"
-"1d35c23c7b67.86746"
-"1d35c23c7b67.86747"
-"1d35c23c7b67.86748"
-"1d35c23c7b67.86749"
-"1d35c23c7b67.86750"
-"1d35c23c7b67.86751"
+"1d35c23c7b67.10281"
+"1d35c23c7b67.10282"
+"1d35c23c7b67.10283"
+"1d35c23c7b67.10284"
+"1d35c23c7b67.10285"
+"1d35c23c7b67.10286"
+"1d35c23c7b67.10287"
+"1d35c23c7b67.10288"
+"1d35c23c7b67.10289"
 )
 
 Pstream initialised with:
@@ -3517,11 +3517,11 @@ sensitivity analysis
 [dbg-hs] B: drho block done, entering Faa loop
 [dbg-hs] C: Faa loop done, entering copy-back block
 [dbg-hs] D: copy-back done
-Max(D0-opt2*0.2,D1): 1.5e+05
+Max(D0-opt2*0.2,D1): 2.8e+06
 
  Heaviside_rho
 
-ExecutionTime = 59.84 s  ClockTime = 60 s
+ExecutionTime = 53.33 s  ClockTime = 54 s
 
 End
 

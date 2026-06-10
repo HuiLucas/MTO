@@ -64,15 +64,17 @@ def gyroid_rotation_matrix(a: np.ndarray) -> np.ndarray:
 # ── Internal geometry helper ──────────────────────────────────────────────────
 
 def _gyroid_geometry(
-    pts_mm:   np.ndarray,   # (N, 3)
-    freq_mm:  np.ndarray,   # (N, 3)  [kx, ky, kz]
-    gamma:    np.ndarray,   # (N,)
-    epsilon:  float,
+    pts_mm:    np.ndarray,             # (N, 3)
+    freq_mm:   np.ndarray,             # (N, 3)  [kx, ky, kz]
+    gamma:     np.ndarray,             # (N,)
+    epsilon:   float,
     rot_matrix: np.ndarray | None,
+    phase_mm:  np.ndarray | None = None,  # (N, 3)  [px, py, pz] phase offsets (rad)
 ) -> dict:
     """
-    Compute G, spatial gradient (Gx, Gy, Gz), dG/dkα, and mixed partials
-    dGx/dkα … dGz/dkα for the appropriate gyroid formula.
+    Compute G, spatial gradient (Gx, Gy, Gz), dG/dkα, dG/dpα, and mixed
+    partials dGx/dkα … dGz/dkα and dGx/dpα … dGz/dpα for the appropriate
+    gyroid formula.
 
     Returns a dict with keys:
         G, sG, Gx, Gy, Gz, ng, inv_ng,
@@ -80,18 +82,38 @@ def _gyroid_geometry(
         dGx_dkx, dGx_dky, dGx_dkz,
         dGy_dkx, dGy_dky, dGy_dkz,
         dGz_dkx, dGz_dky, dGz_dkz,
-        w, dw_dkx, dw_dky, dw_dkz
+        w, dw_dkx, dw_dky, dw_dkz,
+        dG_dpx, dG_dpy, dG_dpz,
+        dGx_dpx, dGx_dpy, dGx_dpz,
+        dGy_dpx, dGy_dpy, dGy_dpz,
+        dGz_dpx, dGz_dpy, dGz_dpz,
+        dw_dpx, dw_dpy, dw_dpz
+
+    The dp-prefixed quantities are the phase analogues of the dk ones,
+    obtained from phi_a = k_a*coord_a + p_a (d(phi_a)/dp_a = 1, vs.
+    d(phi_a)/dk_a = coord_a).  They are computed unconditionally — when
+    phase_mm is None, phi_a reduces to k_a*coord_a but the partials w.r.t.
+    a hypothetical p_a are still well-defined and harmless.
     """
     eps_reg = 1e-6
     x = pts_mm[:, 0]; y = pts_mm[:, 1]; z = pts_mm[:, 2]
     kx = freq_mm[:, 0]; ky = freq_mm[:, 1]; kz = freq_mm[:, 2]
 
+    # Phase-shifted arguments: phi_a = k_a * coord_a + p_a
+    if phase_mm is not None:
+        phi_x = kx * x + phase_mm[:, 0]
+        phi_y = ky * y + phase_mm[:, 1]
+        phi_z = kz * z + phase_mm[:, 2]
+    else:
+        phi_x = kx * x
+        phi_y = ky * y
+        phi_z = kz * z
+
     if rot_matrix is not None:
         R = rot_matrix
-        p = kx * x; q = ky * y; r = kz * z
-        u = R[0, 0]*p + R[0, 1]*q + R[0, 2]*r
-        v = R[1, 0]*p + R[1, 1]*q + R[1, 2]*r
-        w_coord = R[2, 0]*p + R[2, 1]*q + R[2, 2]*r
+        u = R[0, 0]*phi_x + R[0, 1]*phi_y + R[0, 2]*phi_z
+        v = R[1, 0]*phi_x + R[1, 1]*phi_y + R[1, 2]*phi_z
+        w_coord = R[2, 0]*phi_x + R[2, 1]*phi_y + R[2, 2]*phi_z
 
         su = np.sin(u); cu = np.cos(u)
         sv = np.sin(v); cv = np.cos(v)
@@ -159,10 +181,31 @@ def _gyroid_geometry(
         dGz_dky = kz * y * M21
         dGz_dkz = Az + kz * z * M22
 
+        # dG/dpα = Aα  (phase analogue of dG/dkα = coord·Aα, since
+        # d(phi_α)/d(p_α) = 1 instead of d(phi_α)/d(k_α) = coord_α)
+        dG_dpx = Ax
+        dG_dpy = Ay
+        dG_dpz = Az
+
+        # Mixed partials ∂(Gβ)/∂pα = kβ · M[β,α].  No diagonal Aβ term:
+        # unlike dGβ/dkα (where δ_βα·Aβ comes from dkβ/dkα), kβ never
+        # depends on pα.
+        dGx_dpx = kx * M00
+        dGx_dpy = kx * M01
+        dGx_dpz = kx * M02
+
+        dGy_dpx = ky * M10
+        dGy_dpy = ky * M11
+        dGy_dpz = ky * M12
+
+        dGz_dpx = kz * M20
+        dGz_dpy = kz * M21
+        dGz_dpz = kz * M22
+
     else:
-        sx = np.sin(kx*x); cx = np.cos(kx*x)
-        sy = np.sin(ky*y); cy = np.cos(ky*y)
-        sz = np.sin(kz*z); cz = np.cos(kz*z)
+        sx = np.sin(phi_x); cx = np.cos(phi_x)
+        sy = np.sin(phi_y); cy = np.cos(phi_y)
+        sz = np.sin(phi_z); cz = np.cos(phi_z)
 
         G  = sx*cy + sy*cz + sz*cx
         Ax = cx*cy - sz*sx
@@ -186,6 +229,25 @@ def _gyroid_geometry(
         dGz_dky = -kz * y * cy * sz
         dGz_dkz = Az - kz * z * (sz*cx + sy*cz)
 
+        # dG/dpα = Aα  (phase analogue of dG/dkα = coord·Aα)
+        dG_dpx = Ax
+        dG_dpy = Ay
+        dG_dpz = Az
+
+        # Mixed partials ∂(Gβ)/∂pα: same Hessian terms as dGβ/dkα but
+        # without the diagonal Aβ term and without the coord_α chain factor
+        dGx_dpx = -kx * (sx*cy + sz*cx)
+        dGx_dpy = -kx * cx * sy
+        dGx_dpz = -kx * cz * sx
+
+        dGy_dpx = -ky * cx * sy
+        dGy_dpy = -ky * (sy*cz + sx*cy)
+        dGy_dpz = -ky * cy * sz
+
+        dGz_dpx = -kz * cz * sx
+        dGz_dpy = -kz * cy * sz
+        dGz_dpz = -kz * (sz*cx + sy*cz)
+
     sG = np.sign(G)
     sG[sG == 0] = 1.0
 
@@ -201,6 +263,11 @@ def _gyroid_geometry(
     dw_dky = dw_factor * dG_dky
     dw_dkz = dw_factor * dG_dkz
 
+    # dw/dpα = (1−2γ)·w/ε · sign(G) · dG/dpα  (phase analogue of dw/dkα)
+    dw_dpx = dw_factor * dG_dpx
+    dw_dpy = dw_factor * dG_dpy
+    dw_dpz = dw_factor * dG_dpz
+
     return dict(
         G=G, sG=sG,
         Gx=Gx, Gy=Gy, Gz=Gz, ng=ng, inv_ng=inv_ng,
@@ -209,6 +276,11 @@ def _gyroid_geometry(
         dGy_dkx=dGy_dkx, dGy_dky=dGy_dky, dGy_dkz=dGy_dkz,
         dGz_dkx=dGz_dkx, dGz_dky=dGz_dky, dGz_dkz=dGz_dkz,
         w=w, dw_dkx=dw_dkx, dw_dky=dw_dky, dw_dkz=dw_dkz,
+        dG_dpx=dG_dpx, dG_dpy=dG_dpy, dG_dpz=dG_dpz,
+        dGx_dpx=dGx_dpx, dGx_dpy=dGx_dpy, dGx_dpz=dGx_dpz,
+        dGy_dpx=dGy_dpx, dGy_dpy=dGy_dpy, dGy_dpz=dGy_dpz,
+        dGz_dpx=dGz_dpx, dGz_dpy=dGz_dpy, dGz_dpz=dGz_dpz,
+        dw_dpx=dw_dpx, dw_dpy=dw_dpy, dw_dpz=dw_dpz,
     )
 
 
@@ -226,6 +298,7 @@ def compute_gyroid_overhang(
     W:       np.ndarray,   # (N, N_ctrl)  RBF evaluation Jacobian
     rot_matrix: np.ndarray | None = None,  # 3×3 gyroid rotation matrix (or None)
     eps_reg: float = 1e-6,
+    phase_mm: np.ndarray | None = None,  # (N, 3)  [px, py, pz] phase offsets (rad)
 ) -> tuple[float, np.ndarray, dict]:
     """
     Analytic gyroid overhang penalty and gradient.
@@ -237,7 +310,7 @@ def compute_gyroid_overhang(
     info       : dict         {'g_oh', 'pen_oh'}
     """
     N = len(pts_mm)
-    geo = _gyroid_geometry(pts_mm, freq_mm, gamma, epsilon, rot_matrix)
+    geo = _gyroid_geometry(pts_mm, freq_mm, gamma, epsilon, rot_matrix, phase_mm)
 
     bx, by, bz = b_vec
     Gx = geo['Gx']; Gy = geo['Gy']; Gz = geo['Gz']
@@ -280,6 +353,27 @@ def compute_gyroid_overhang(
 
     grad_ctrl = np.stack([W.T @ sk_x, W.T @ sk_y, W.T @ sk_z], axis=1)
 
+    if phase_mm is not None:
+        dBG_dpx = bx*geo['dGx_dpx'] + by*geo['dGy_dpx'] + bz*geo['dGz_dpx']
+        dBG_dpy = bx*geo['dGx_dpy'] + by*geo['dGy_dpy'] + bz*geo['dGz_dpy']
+        dBG_dpz = bx*geo['dGx_dpz'] + by*geo['dGy_dpz'] + bz*geo['dGz_dpz']
+
+        dng_dpx = (Gx_v*geo['dGx_dpx'] + Gy_v*geo['dGy_dpx'] + Gz_v*geo['dGz_dpx']) * inv_ng
+        dng_dpy = (Gx_v*geo['dGx_dpy'] + Gy_v*geo['dGy_dpy'] + Gz_v*geo['dGz_dpy']) * inv_ng
+        dng_dpz = (Gx_v*geo['dGx_dpz'] + Gy_v*geo['dGy_dpz'] + Gz_v*geo['dGz_dpz']) * inv_ng
+
+        dnb_dpx = sG * dBG_dpx * inv_ng - n_b * dng_dpx * inv_ng
+        dnb_dpy = sG * dBG_dpy * inv_ng - n_b * dng_dpy * inv_ng
+        dnb_dpz = sG * dBG_dpz * inv_ng - n_b * dng_dpz * inv_ng
+
+        dw_dpx = geo['dw_dpx']; dw_dpy = geo['dw_dpy']; dw_dpz = geo['dw_dpz']
+        sk_px = c * (viol**2 * dw_dpx - 2.0 * w * viol * dnb_dpx)
+        sk_py = c * (viol**2 * dw_dpy - 2.0 * w * viol * dnb_dpy)
+        sk_pz = c * (viol**2 * dw_dpz - 2.0 * w * viol * dnb_dpz)
+
+        grad_ctrl_p = np.stack([W.T @ sk_px, W.T @ sk_py, W.T @ sk_pz], axis=1)
+        grad_ctrl = np.concatenate([grad_ctrl, grad_ctrl_p], axis=1)
+
     return J_oh, grad_ctrl, {'g_oh': g_oh, 'pen_oh': J_oh}
 
 
@@ -294,6 +388,7 @@ def compute_gyroid_overhang_raw(
     W:       np.ndarray,
     rot_matrix: np.ndarray | None = None,
     eps_reg: float = 1e-6,
+    phase_mm: np.ndarray | None = None,  # (N, 3)  [px, py, pz] phase offsets (rad)
 ) -> tuple[float, np.ndarray, dict]:
     """
     Raw surface-weighted mean overhang violation g_oh and its exact gradient,
@@ -302,7 +397,7 @@ def compute_gyroid_overhang_raw(
     g_oh = Σ_j(w_j · max(0, −cos_max − n_b_j)) / Σ_j(w_j)
     """
     N = len(pts_mm)
-    geo = _gyroid_geometry(pts_mm, freq_mm, gamma, epsilon, rot_matrix)
+    geo = _gyroid_geometry(pts_mm, freq_mm, gamma, epsilon, rot_matrix, phase_mm)
 
     bx, by, bz = b_vec
     Gx = geo['Gx']; Gy = geo['Gy']; Gz = geo['Gz']
@@ -338,6 +433,27 @@ def compute_gyroid_overhang_raw(
     sk_z = c * ((viol - g_oh) * dw_dkz - w * H_viol * dnb_dkz)
 
     grad_ctrl = np.stack([W.T @ sk_x, W.T @ sk_y, W.T @ sk_z], axis=1)
+
+    if phase_mm is not None:
+        dBG_dpx = bx*geo['dGx_dpx'] + by*geo['dGy_dpx'] + bz*geo['dGz_dpx']
+        dBG_dpy = bx*geo['dGx_dpy'] + by*geo['dGy_dpy'] + bz*geo['dGz_dpy']
+        dBG_dpz = bx*geo['dGx_dpz'] + by*geo['dGy_dpz'] + bz*geo['dGz_dpz']
+
+        dng_dpx = (Gx_v*geo['dGx_dpx'] + Gy_v*geo['dGy_dpx'] + Gz_v*geo['dGz_dpx']) * inv_ng
+        dng_dpy = (Gx_v*geo['dGx_dpy'] + Gy_v*geo['dGy_dpy'] + Gz_v*geo['dGz_dpy']) * inv_ng
+        dng_dpz = (Gx_v*geo['dGx_dpz'] + Gy_v*geo['dGy_dpz'] + Gz_v*geo['dGz_dpz']) * inv_ng
+
+        dnb_dpx = sG * dBG_dpx * inv_ng - n_b * dng_dpx * inv_ng
+        dnb_dpy = sG * dBG_dpy * inv_ng - n_b * dng_dpy * inv_ng
+        dnb_dpz = sG * dBG_dpz * inv_ng - n_b * dng_dpz * inv_ng
+
+        dw_dpx = geo['dw_dpx']; dw_dpy = geo['dw_dpy']; dw_dpz = geo['dw_dpz']
+        sk_px = c * ((viol - g_oh) * dw_dpx - w * H_viol * dnb_dpx)
+        sk_py = c * ((viol - g_oh) * dw_dpy - w * H_viol * dnb_dpy)
+        sk_pz = c * ((viol - g_oh) * dw_dpz - w * H_viol * dnb_dpz)
+
+        grad_ctrl_p = np.stack([W.T @ sk_px, W.T @ sk_py, W.T @ sk_pz], axis=1)
+        grad_ctrl = np.concatenate([grad_ctrl, grad_ctrl_p], axis=1)
 
     return g_oh, grad_ctrl, {'g_oh': g_oh}
 

@@ -4,7 +4,7 @@ run:
   parallel: 10
   postprocess: postProcess
   skip_clean: false
-  iters: 100
+  iters: 300
 geometry:
   origin_mm:
   - 0.0
@@ -97,6 +97,8 @@ optimization:
   - 1
   am_align_build_to_flow: true
   no_overhang: false
+  optimize_phase: true
+  p_amp_bound: 3.14159
   pareto_enabled: false
   pareto_weights: null
   pareto_n_weights: 9
