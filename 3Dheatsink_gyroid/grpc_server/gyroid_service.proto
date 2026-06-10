@@ -158,6 +158,23 @@ message NurbsFileRequest {
   string format = 2;
 }
 
+// ─── Print preparation ───────────────────────────────────────────────────────
+
+// Start gyroid_print_prep.py with optional extra CLI flags.
+// Example extra_args: ["--num-workers", "4", "--max-bridge-length", "1.0"]
+message PrintPrepRequest {
+  repeated string extra_args = 1;
+}
+
+// Which generated file to download.
+//   "build"     -> <stem>_build.stl     (mesh re-oriented into the build direction)
+//   "overhang"  -> <stem>_overhang.stl  (downskin/overhang surface)
+//   "supports"  -> <stem>_supports.stl  (generated support structures)
+// Defaults to "build" when empty.
+message PrintPrepFileRequest {
+  string which = 1;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 service GyroidOptimizer {
@@ -253,4 +270,21 @@ service GyroidOptimizer {
 
   // Download a generated OBJ (quad mesh) or STEP (NURBS) file.
   rpc DownloadNurbsFile (NurbsFileRequest) returns (stream FileChunk);
+
+  // ── Print preparation ──────────────────────────────────────────────────────
+
+  // Start gyroid_print_prep.py (error if already running).
+  rpc StartPrintPrep (PrintPrepRequest) returns (StatusResponse);
+
+  // Send SIGTERM to the print-prep process (SIGKILL after 10 s).
+  rpc StopPrintPrep (Empty) returns (StatusResponse);
+
+  // Query the print-prep process state.
+  rpc GetPrintPrepStatus (Empty) returns (RunStatusResponse);
+
+  // Server-streaming: replay buffered output, then tail live output.
+  rpc StreamPrintPrepOutput (Empty) returns (stream OutputLine);
+
+  // Download a generated build/overhang/supports STL file.
+  rpc DownloadPrintPrepFile (PrintPrepFileRequest) returns (stream FileChunk);
 }

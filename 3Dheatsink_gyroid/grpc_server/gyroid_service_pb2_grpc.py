@@ -162,6 +162,31 @@ class GyroidOptimizerStub:
                 request_serializer=gyroid__service__pb2.NurbsFileRequest.SerializeToString,
                 response_deserializer=gyroid__service__pb2.FileChunk.FromString,
                 _registered_method=True)
+        self.StartPrintPrep = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StartPrintPrep',
+                request_serializer=gyroid__service__pb2.PrintPrepRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.StopPrintPrep = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/StopPrintPrep',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.StatusResponse.FromString,
+                _registered_method=True)
+        self.GetPrintPrepStatus = channel.unary_unary(
+                '/gyroid.GyroidOptimizer/GetPrintPrepStatus',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.RunStatusResponse.FromString,
+                _registered_method=True)
+        self.StreamPrintPrepOutput = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/StreamPrintPrepOutput',
+                request_serializer=gyroid__service__pb2.Empty.SerializeToString,
+                response_deserializer=gyroid__service__pb2.OutputLine.FromString,
+                _registered_method=True)
+        self.DownloadPrintPrepFile = channel.unary_stream(
+                '/gyroid.GyroidOptimizer/DownloadPrintPrepFile',
+                request_serializer=gyroid__service__pb2.PrintPrepFileRequest.SerializeToString,
+                response_deserializer=gyroid__service__pb2.FileChunk.FromString,
+                _registered_method=True)
 
 
 class GyroidOptimizerServicer:
@@ -361,6 +386,43 @@ class GyroidOptimizerServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartPrintPrep(self, request, context):
+        """── Print preparation ──────────────────────────────────────────────────────
+
+        Start gyroid_print_prep.py (error if already running).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopPrintPrep(self, request, context):
+        """Send SIGTERM to the print-prep process (SIGKILL after 10 s).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPrintPrepStatus(self, request, context):
+        """Query the print-prep process state.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamPrintPrepOutput(self, request, context):
+        """Server-streaming: replay buffered output, then tail live output.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DownloadPrintPrepFile(self, request, context):
+        """Download a generated build/overhang/supports STL file.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_GyroidOptimizerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -487,6 +549,31 @@ def add_GyroidOptimizerServicer_to_server(servicer, server):
             'DownloadNurbsFile': grpc.unary_stream_rpc_method_handler(
                     servicer.DownloadNurbsFile,
                     request_deserializer=gyroid__service__pb2.NurbsFileRequest.FromString,
+                    response_serializer=gyroid__service__pb2.FileChunk.SerializeToString,
+            ),
+            'StartPrintPrep': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartPrintPrep,
+                    request_deserializer=gyroid__service__pb2.PrintPrepRequest.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'StopPrintPrep': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopPrintPrep,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.StatusResponse.SerializeToString,
+            ),
+            'GetPrintPrepStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPrintPrepStatus,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.RunStatusResponse.SerializeToString,
+            ),
+            'StreamPrintPrepOutput': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamPrintPrepOutput,
+                    request_deserializer=gyroid__service__pb2.Empty.FromString,
+                    response_serializer=gyroid__service__pb2.OutputLine.SerializeToString,
+            ),
+            'DownloadPrintPrepFile': grpc.unary_stream_rpc_method_handler(
+                    servicer.DownloadPrintPrepFile,
+                    request_deserializer=gyroid__service__pb2.PrintPrepFileRequest.FromString,
                     response_serializer=gyroid__service__pb2.FileChunk.SerializeToString,
             ),
     }
@@ -1167,6 +1254,141 @@ class GyroidOptimizer:
             target,
             '/gyroid.GyroidOptimizer/DownloadNurbsFile',
             gyroid__service__pb2.NurbsFileRequest.SerializeToString,
+            gyroid__service__pb2.FileChunk.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartPrintPrep(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StartPrintPrep',
+            gyroid__service__pb2.PrintPrepRequest.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopPrintPrep(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StopPrintPrep',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPrintPrepStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/GetPrintPrepStatus',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.RunStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamPrintPrepOutput(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/StreamPrintPrepOutput',
+            gyroid__service__pb2.Empty.SerializeToString,
+            gyroid__service__pb2.OutputLine.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DownloadPrintPrepFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/gyroid.GyroidOptimizer/DownloadPrintPrepFile',
+            gyroid__service__pb2.PrintPrepFileRequest.SerializeToString,
             gyroid__service__pb2.FileChunk.FromString,
             options,
             channel_credentials,
