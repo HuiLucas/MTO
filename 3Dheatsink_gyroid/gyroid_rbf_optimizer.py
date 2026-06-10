@@ -641,14 +641,14 @@ def run_openfoam_one_step(case_dir: Path,
             cwd=cwd, capture=True,
         )
         if r.returncode != 0:
-            log = case_dir / f'log.decomposePar.iter{iter_num:03d}'
+            log = case_dir / 'logs' / f'log.decomposePar.iter{iter_num:03d}'
             log.write_bytes((r.stdout or b'') + b'\n' + (r.stderr or b''))
             raise RuntimeError(
                 f"decomposePar failed (exit {r.returncode}). Log: {log}\n"
                 + (r.stderr or b'').decode(errors='replace')[-2000:]
             )
 
-        log_path = case_dir / f'log.{solver}.iter{iter_num:03d}'
+        log_path = case_dir/ 'logs' / f'log.{solver}.iter{iter_num:03d}'
         print(f"  mpirun -n {n_procs} {solver} … (log → {log_path.name})")
         r = _run_cmd(
             ['mpirun', '--oversubscribe', '-n', str(n_procs),
@@ -668,7 +668,7 @@ def run_openfoam_one_step(case_dir: Path,
             cwd=cwd, capture=True,
         )
         if r.returncode != 0:
-            log = case_dir / f'log.reconstructPar.iter{iter_num:03d}'
+            log = case_dir / 'logs' / f'log.reconstructPar.iter{iter_num:03d}'
             log.write_bytes((r.stdout or b'') + b'\n' + (r.stderr or b''))
             raise RuntimeError(
                 f"reconstructPar failed (exit {r.returncode}). Log: {log}\n"
