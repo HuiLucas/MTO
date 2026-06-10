@@ -8,7 +8,9 @@ Pipeline
 2. Optionally re-orient the mesh so the configured build direction
    (optimization.build_direction in gyroid_case_config.yaml, or --build-direction)
    points along +Z, since pySLM's overhang/slicing/support utilities all assume
-   +Z is "up" (the build direction).
+   +Z is "up" (the build direction). The re-oriented, platform-dropped mesh is
+   also exported as its own STL via --build-mesh-out (default:
+   <stem>_build.stl); use --skip-build-mesh to skip this.
 3. Use pyslm.support.getOverhangMesh() to extract the down-facing ("downskin")
    surface, i.e. faces whose normal lies within --overhang-angle of straight
    down, and export it as its own STL.
@@ -24,16 +26,18 @@ Pipeline
    pyslm.analysis.getLayerTime() across layers and adding a fixed
    --recoater-time per layer. --layer-stride samples every Nth layer and
    extrapolates the scan time, since fine layers over a tall part can mean
-   tens of thousands of slices.
+   tens of thousands of slices. --num-workers > 1 slices and hatches the
+   sampled layers in parallel worker processes.
 
 Notes / assumptions
 --------------------
 * "Maximum bridge length" (--max-bridge-length) is the self-supporting span
   (mm) for the chosen process/material. There is no single correct value;
   ~1.0 mm is a conservative default for laser powder bed fusion of metals.
-  A downskin island's "span" is conservatively taken as the longer side of
-  its minimum-area bounding rectangle - i.e. if EITHER in-plane dimension of
-  the island exceeds --max-bridge-length, support is generated.
+  A downskin island's "span" is the short side of the bounding rectangle
+  (over all orientations) with the largest aspect ratio - i.e. the width of
+  the island measured across its most elongated direction. If that width
+  exceeds --max-bridge-length, support is generated.
 * Process parameters for the build-time estimate (hatch distance, laser
   speed, recoat time, etc.) are generic L-PBF defaults and should be
   replaced with values for the actual machine/material.
@@ -51,6 +55,7 @@ import argparse
 import math
 import sys
 import time
+from multiprocessing import get_context
 from pathlib import Path
 
 import numpy as np
@@ -65,6 +70,9 @@ from pyslm.analysis import getLayerTime
 
 sys.path.insert(0, str(Path(__file__).parent))
 from gyroid_to_stl import write_binary_stl  # noqa: E402
+from gyroid_case_wrapper import (  # noqa: E402
+    BoxGeometry, InletSettings, OutletSettings, _compute_flow_unit_vector,
+)
 
 
 # ── Build direction / config helpers ────────────────────────────────────────
@@ -93,6 +101,43 @@ def _parse_build_direction(value) -> np.ndarray:
     return v / norm
 
 
+def _flow_unit_vector_from_config(cfg: dict) -> tuple[float, float, float]:
+    """Compute the inlet->outlet flow unit vector from a config dict.
+
+    Mirrors gyroid_case_wrapper._compute_flow_unit_vector / resolve_settings,
+    using only the fields needed for that calculation (geometry.origin_mm,
+    geometry.size_mm, geometry.flow_axis, inlet/outlet face + window_origin_mm).
+    """
+    geo_cfg = cfg.get('geometry', {})
+    origin_mm = tuple(float(v) for v in geo_cfg['origin_mm'])
+    size_mm = tuple(float(v) for v in geo_cfg['size_mm'])
+    flow_axis = str(geo_cfg['flow_axis']).lower()
+
+    geometry = BoxGeometry(origin_mm=origin_mm, size_mm=size_mm, cells=(1, 1, 1), flow_axis=flow_axis)
+
+    inlet_cfg = cfg.get('inlet', {})
+    outlet_cfg = cfg.get('outlet', {})
+    inlet_face = str(inlet_cfg.get('face', 'min')).lower()
+    outlet_face_default = 'max' if inlet_face == 'min' else 'min'
+    outlet_face = str(outlet_cfg.get('face', outlet_face_default)).lower()
+
+    inlet = InletSettings(
+        face=inlet_face,
+        window_origin_mm=tuple(float(v) for v in inlet_cfg.get('window_origin_mm', [0.0, 0.0])),
+        window_size_mm=(0.0, 0.0),
+        velocity_magnitude=0.0,
+        temperature=0.0,
+    )
+    outlet = OutletSettings(
+        face=outlet_face,
+        window_origin_mm=tuple(float(v) for v in outlet_cfg.get('window_origin_mm', [0.0, 0.0])),
+        window_size_mm=(0.0, 0.0),
+        pressure=0.0,
+    )
+
+    return _compute_flow_unit_vector(geometry, inlet, outlet)
+
+
 def read_am_params(yaml_path: Path) -> dict:
     """Read overhang-angle / build-direction defaults from gyroid_case_config.yaml."""
     params = {}
@@ -103,8 +148,20 @@ def read_am_params(yaml_path: Path) -> dict:
         opt = cfg.get('optimization', {})
         if 'am_theta' in opt:
             params['overhang_angle'] = float(opt['am_theta'])
-        if 'build_direction' in opt:
-            params['build_direction'] = opt['build_direction']
+
+        build_direction = opt.get('build_direction')
+
+        if bool(opt.get('am_align_build_to_flow', False)):
+            try:
+                build_direction = _flow_unit_vector_from_config(cfg)
+                print(f"  am_align_build_to_flow=true: build direction set to "
+                      f"inlet->outlet flow vector {build_direction}")
+            except Exception as exc:
+                print(f"  WARNING: am_align_build_to_flow=true but the flow direction "
+                      f"could not be computed ({exc}); using optimization.build_direction")
+
+        if build_direction is not None:
+            params['build_direction'] = build_direction
     except (ImportError, OSError, ValueError, TypeError):
         pass
     return params
@@ -125,20 +182,43 @@ def align_to_build_direction(mesh: trimesh.Trimesh, build_dir: np.ndarray) -> bo
     return True
 
 
-def _polygon_span(poly) -> float:
-    """Largest in-plane dimension (mm) of `poly`'s minimum-area bounding rectangle.
+def _polygon_span(poly, n_angles: int = 180) -> float:
+    """Short side (mm) of the bounding rectangle with the largest aspect ratio.
 
-    Used as a conservative proxy for the unsupported bridging distance across a
-    downskin island: if either side of the rectangle exceeds the printable
-    bridge length, the island is treated as requiring support.
+    Sweeps `poly`'s convex hull through `n_angles` orientations over [0, 90)
+    degrees and, for each, measures the axis-aligned bounding box. The
+    orientation that maximises length/width (i.e. makes the rectangle as
+    elongated as possible) is taken to best capture the island's "narrow"
+    direction - e.g. an elongated or L-shaped downskin reads as narrow even
+    if its overall axis-aligned bounding box is roughly square. The short
+    side of that rectangle is returned as the bridging span.
     """
-    rect = poly.minimum_rotated_rectangle
-    coords = list(rect.exterior.coords) if rect.geom_type == 'Polygon' else None
-    if not coords or len(coords) < 4:
+    hull = poly.convex_hull
+    coords = np.asarray(hull.exterior.coords[:-1]) if hull.geom_type == 'Polygon' else None
+    if coords is None or len(coords) < 2:
         minx, miny, maxx, maxy = poly.bounds
-        return max(maxx - minx, maxy - miny)
-    edges = [math.hypot(coords[i + 1][0] - coords[i][0], coords[i + 1][1] - coords[i][1]) for i in range(2)]
-    return max(edges)
+        return min(maxx - minx, maxy - miny)
+
+    angles = np.linspace(0.0, np.pi / 2, n_angles, endpoint=False)
+    cos_a = np.cos(angles)
+    sin_a = np.sin(angles)
+
+    x = coords[:, 0]
+    y = coords[:, 1]
+
+    rx = np.outer(cos_a, x) + np.outer(sin_a, y)
+    ry = np.outer(-sin_a, x) + np.outer(cos_a, y)
+
+    dx = rx.max(axis=1) - rx.min(axis=1)
+    dy = ry.max(axis=1) - ry.min(axis=1)
+
+    short = np.minimum(dx, dy)
+    long = np.maximum(dx, dy)
+
+    aspect = np.divide(long, short, out=np.full_like(long, np.inf), where=short > 1e-12)
+
+    best = int(np.argmax(aspect))
+    return float(short[best])
 
 
 def _format_duration(seconds: float) -> str:
@@ -250,25 +330,67 @@ def generate_bridge_supports(part: Part, overhang: trimesh.Trimesh, max_bridge_l
 
 # ── Stage 3: print time estimate ─────────────────────────────────────────────
 
+# Populated by _init_hatch_worker() in each worker process spawned by
+# estimate_build_time(); module-level so the Pool.map target (_hatch_layer)
+# can reuse the rebuilt Part/Hatcher inputs across many tasks without
+# re-sending them on every call.
+_worker_part: Part | None = None
+_worker_models: list | None = None
+_worker_hatch_params: dict | None = None
+
+
+def _init_hatch_worker(vertices: np.ndarray, faces: np.ndarray,
+                        hatch_params: dict, model_params: dict) -> None:
+    """Pool initializer: rebuild the (already build-oriented) Part once per worker process."""
+    global _worker_part, _worker_models, _worker_hatch_params
+
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    part = Part('worker')
+    part.setGeometryByMesh(mesh)
+    _worker_part = part
+    _worker_hatch_params = hatch_params
+
+    bstyle = BuildStyle()
+    bstyle.bid = model_params['bid']
+    bstyle.laserSpeed = model_params['laser_speed']
+    model = Model(mid=model_params['mid'])
+    model.buildStyles.append(bstyle)
+    _worker_models = [model]
+
+
+def _hatch_layer(task: tuple) -> tuple:
+    """Slice and hatch a single layer in a worker process. Returns (scan_time_s, has_geometry)."""
+    z, hatch_angle = task
+    hp = _worker_hatch_params
+
+    hatcher = Hatcher()
+    hatcher.hatchAngle = hatch_angle
+    hatcher.hatchDistance = hp['hatch_distance']
+    hatcher.layerAngleIncrement = hp['layer_angle_increment']
+    hatcher.numInnerContours = hp['num_inner_contours']
+    hatcher.numOuterContours = hp['num_outer_contours']
+    hatcher.spotCompensation = hp['spot_compensation']
+
+    boundary = _worker_part.getVectorSlice(z)
+    if not boundary:
+        return 0.0, False
+
+    layer = hatcher.hatch(boundary)
+    if layer is None:
+        return 0.0, False
+
+    model = _worker_models[0]
+    for lg in layer.geometry:
+        lg.mid = model.mid
+        lg.bid = model.buildStyles[0].bid
+
+    return float(getLayerTime(layer, _worker_models)), True
+
+
 def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: float, hatch_angle: float,
                          layer_angle_increment: float, num_inner_contours: int, num_outer_contours: int,
                          spot_compensation: float, laser_speed: float, recoater_time: float,
-                         layer_stride: int) -> dict:
-    hatcher = Hatcher()
-    hatcher.hatchAngle = hatch_angle
-    hatcher.hatchDistance = hatch_distance
-    hatcher.layerAngleIncrement = layer_angle_increment
-    hatcher.numInnerContours = num_inner_contours
-    hatcher.numOuterContours = num_outer_contours
-    hatcher.spotCompensation = spot_compensation
-
-    bstyle = BuildStyle()
-    bstyle.bid = 1
-    bstyle.laserSpeed = laser_speed
-    model = Model(mid=1)
-    model.buildStyles.append(bstyle)
-    models = [model]
-
+                         layer_stride: int, num_workers: int = 1) -> dict:
     bbox = part.boundingBox
     zmin, zmax = float(bbox[2]), float(bbox[5])
     n_total = max(0, int(math.floor((zmax - zmin) / layer_thickness + 1e-9)))
@@ -279,26 +401,64 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
     print(f"  Layer thickness    : {layer_thickness:g} mm  ->  {n_total:,} layer(s)")
     print(f"  Sampling stride    : {layer_stride}  ->  {len(sampled):,} layer(s) sliced & hatched")
 
+    # The hatch angle is rotated by layerAngleIncrement per (real) layer; precompute the
+    # absolute angle for each sampled layer so layers can be processed independently / out of order.
+    hatch_angles = (hatch_angle + np.arange(len(sampled)) * layer_angle_increment * layer_stride) % 180.0
+    tasks = list(zip(sampled.tolist(), hatch_angles.tolist()))
+
+    hatch_params = dict(hatch_distance=hatch_distance, layer_angle_increment=layer_angle_increment,
+                         num_inner_contours=num_inner_contours, num_outer_contours=num_outer_contours,
+                         spot_compensation=spot_compensation)
+    model_params = dict(mid=1, bid=1, laser_speed=laser_speed)
+
     scan_time_sampled = 0.0
     n_with_geometry = 0
     t0 = time.time()
-    for i, z in enumerate(sampled):
-        boundary = part.getVectorSlice(float(z))
-        if boundary:
-            layer = hatcher.hatch(boundary)
-            if layer is not None:
-                for lg in layer.geometry:
-                    lg.mid = model.mid
-                    lg.bid = bstyle.bid
-                scan_time_sampled += getLayerTime(layer, models)
-                n_with_geometry += 1
 
-        hatcher.hatchAngle = (hatcher.hatchAngle + hatcher.layerAngleIncrement * layer_stride) % 180.0
+    if num_workers > 1 and len(tasks) > 1:
+        print(f"  Using {num_workers} worker process(es) for slicing & hatching ...")
+        ctx = get_context('spawn')
+        with ctx.Pool(processes=num_workers, initializer=_init_hatch_worker,
+                       initargs=(part.geometry.vertices, part.geometry.faces,
+                                 hatch_params, model_params)) as pool:
+            for i, (scan_time, has_geom) in enumerate(pool.imap_unordered(_hatch_layer, tasks)):
+                scan_time_sampled += scan_time
+                n_with_geometry += int(has_geom)
+                if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
+                    elapsed = time.time() - t0
+                    print(f"    ... {i + 1:,}/{len(tasks):,} sampled layers ({elapsed:.1f}s elapsed)", end='\r')
+    else:
+        bstyle = BuildStyle()
+        bstyle.bid = model_params['bid']
+        bstyle.laserSpeed = model_params['laser_speed']
+        model = Model(mid=model_params['mid'])
+        model.buildStyles.append(bstyle)
+        models = [model]
 
-        if (i + 1) % 50 == 0 or (i + 1) == len(sampled):
-            elapsed = time.time() - t0
-            print(f"    ... {i + 1:,}/{len(sampled):,} sampled layers ({elapsed:.1f}s elapsed)", end='\r')
-    if len(sampled) > 0:
+        hatcher = Hatcher()
+        hatcher.hatchDistance = hatch_distance
+        hatcher.layerAngleIncrement = layer_angle_increment
+        hatcher.numInnerContours = num_inner_contours
+        hatcher.numOuterContours = num_outer_contours
+        hatcher.spotCompensation = spot_compensation
+
+        for i, (z, ha) in enumerate(tasks):
+            hatcher.hatchAngle = ha
+            boundary = part.getVectorSlice(z)
+            if boundary:
+                layer = hatcher.hatch(boundary)
+                if layer is not None:
+                    for lg in layer.geometry:
+                        lg.mid = model.mid
+                        lg.bid = bstyle.bid
+                    scan_time_sampled += getLayerTime(layer, models)
+                    n_with_geometry += 1
+
+            if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
+                elapsed = time.time() - t0
+                print(f"    ... {i + 1:,}/{len(tasks):,} sampled layers ({elapsed:.1f}s elapsed)", end='\r')
+
+    if len(tasks) > 0:
         print()
 
     scale = (n_total / len(sampled)) if len(sampled) > 0 else 0.0
@@ -343,13 +503,17 @@ def main() -> None:
                         help='Faces within this angle (deg) of straight down are downskin/overhang')
     parser.add_argument('--build-direction', default=am_defaults.get('build_direction', 'z'),
                         help="Build-up direction in part axes: 'x'/'y'/'z' or 'bx,by,bz'")
-    parser.add_argument('--max-bridge-length', type=float, default=1.0,
+    parser.add_argument('--build-mesh-out', default=None,
+                        help='Output STL for the mesh re-oriented into the build direction')
+    parser.add_argument('--skip-build-mesh', action='store_true',
+                        help='Skip exporting the build-oriented mesh')
+    parser.add_argument('--max-bridge-length', type=float, default=1.5,
                         help='Max self-supporting in-plane span (mm) before a downskin island needs support')
     parser.add_argument('--support-inset', type=float, default=0.1,
                         help='Shrink each support footprint inward by this much (mm)')
     parser.add_argument('--support-gap', type=float, default=0.1,
                         help='Gap (mm) left between the top of a support and the downskin surface')
-    parser.add_argument('--min-support-area', type=float, default=0.5,
+    parser.add_argument('--min-support-area', type=float, default=1.5,
                         help='Ignore downskin islands with a flattened area below this (mm^2)')
     parser.add_argument('--no-remove-part-overlap', dest='remove_part_overlap', action='store_false',
                         help='Skip the boolean diff that carves supports out of solid part material')
@@ -373,6 +537,8 @@ def main() -> None:
     parser.add_argument('--recoater-time', type=float, default=10.0, help='Fixed recoat/dwell time per layer (s)')
     parser.add_argument('--layer-stride', type=int, default=1,
                         help='Slice & hatch every Nth layer and extrapolate (use >1 for tall parts)')
+    parser.add_argument('--num-workers', type=int, default=1,
+                        help='Worker processes for parallel slicing & hatching of sampled layers (1 = sequential)')
 
     args = parser.parse_args()
 
@@ -393,6 +559,12 @@ def main() -> None:
     bbox = part.boundingBox
     print(f"  Bounding box (build frame): "
           f"x[{bbox[0]:.3f}, {bbox[3]:.3f}]  y[{bbox[1]:.3f}, {bbox[4]:.3f}]  z[{bbox[2]:.3f}, {bbox[5]:.3f}] mm")
+
+    if not args.skip_build_mesh:
+        build_mesh_out = Path(args.build_mesh_out) if args.build_mesh_out else \
+            stl_path.with_name(stl_path.stem + '_build.stl')
+        print(f"  Writing build-oriented mesh -> {build_mesh_out}")
+        write_binary_stl(build_mesh_out, part.geometry.vertices, part.geometry.faces)
 
     overhang = None
     if not args.skip_overhang or not args.skip_supports:
@@ -425,7 +597,8 @@ def main() -> None:
         stats = estimate_build_time(
             part, args.layer_thickness, args.hatch_distance, args.hatch_angle,
             args.layer_angle_increment, args.num_inner_contours, args.num_outer_contours,
-            args.spot_compensation, args.laser_speed, args.recoater_time, args.layer_stride)
+            args.spot_compensation, args.laser_speed, args.recoater_time, args.layer_stride,
+            args.num_workers)
 
         print(f"\n  Total layers          : {stats['n_total_layers']:,}")
         print(f"  Sampled layers        : {stats['n_sampled_layers']:,} "
