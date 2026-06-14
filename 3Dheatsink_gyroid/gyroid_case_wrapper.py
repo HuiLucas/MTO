@@ -138,6 +138,7 @@ class OptimizationSettings:
     am_theta: float
     am_P_bar: float
     mu_overhang: float
+    am_L_bridge: float
     no_overhang: bool
     pareto_enabled: bool
     pareto_weights: list | None
@@ -421,6 +422,7 @@ def resolve_settings(config: dict, cli_args: argparse.Namespace) -> tuple[RunSet
         am_theta=float(optimization_cfg.get('am_theta', 45.0)),
         am_P_bar=float(optimization_cfg.get('am_P_bar', 0.01)),
         mu_overhang=float(optimization_cfg.get('mu_overhang', 1.0)),
+        am_L_bridge=float(optimization_cfg.get('am_L_bridge', 1.5)),
         no_overhang=bool(optimization_cfg.get('no_overhang', False)),
         pareto_enabled=bool(optimization_cfg.get('pareto_enabled', False)),
         pareto_weights=optimization_cfg.get('pareto_weights', None),
@@ -1166,6 +1168,7 @@ def build_optimizer(case_dir: Path, geometry: BoxGeometry, run: RunSettings,
         am_theta_max=math.radians(optimisation.am_theta),
         am_P_bar=optimisation.am_P_bar,
         am_mu_overhang=mu_overhang_override if mu_overhang_override is not None else optimisation.mu_overhang,
+        am_L_bridge_mm=optimisation.am_L_bridge,
         use_overhang=not optimisation.no_overhang,
         am_build_direction=build_dir,
         mode='pareto' if optimisation.pareto_enabled else optimisation.mode,

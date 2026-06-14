@@ -851,6 +851,7 @@ class GyroidRBFOptimizer:
         am_theta_max:    float = math.pi / 4.0,
         am_P_bar:        float = 0.01,
         am_mu_overhang:  float = 1.0,
+        am_L_bridge_mm:  float = 1.5,
         use_overhang:    bool  = True,
         # ── Optimisation mode ─────────────────────────────────────────────────
         mode:              str   = 'heat',   # 'heat' or 'pressure'
@@ -990,6 +991,7 @@ class GyroidRBFOptimizer:
                 P_bar        = am_P_bar,
                 mu_overhang  = am_mu_overhang,
                 use_overhang = use_overhang,
+                L_bridge_mm  = am_L_bridge_mm,
                 build_direction = None if am_build_direction is None else np.asarray(am_build_direction, dtype=float)
             )
         else:
@@ -1235,6 +1237,7 @@ class GyroidRBFOptimizer:
                 self.cell_centers_mm, freq_mm, gamma, sdf,
                 self.epsilon, self.am.cos_max, self.am.b_vec,
                 self.am.mu_oh, self.W, self.rot_matrix,
+                r_bridge=self.am.r_bridge, bridge_eps=self.am.bridge_eps,
             )
             J_aug += J_oh
             print(f"  g_overhang = {am_info['g_oh']:.4g}  "
@@ -1532,6 +1535,7 @@ class GyroidRBFOptimizer:
             g_oh, grad_g_oh_ctrl, am_info = compute_gyroid_overhang_raw(
                 self.cell_centers_mm, freq_mm, gamma, sdf,
                 self.epsilon, self.am.cos_max, self.am.b_vec, self.W, self.rot_matrix,
+                r_bridge=self.am.r_bridge, bridge_eps=self.am.bridge_eps,
             )
             grad_g_oh = grad_g_oh_ctrl.ravel()
 
@@ -1936,6 +1940,9 @@ def main() -> None:
                         help='Initial penalty weight for overhang (default: 1.0)')
     parser.add_argument('--no-overhang',  action='store_true',
                         help='Disable the overhang angle constraint')
+    parser.add_argument('--am-L-bridge',  type=float, default=1.5,
+                        help='LPBF self-supporting bridge length in mm; '
+                             'erosion radius = L_bridge/2 (default: 1.5)')
     # ── Optimization mode (thermal vs. pressure-based) ────────────────────────
     parser.add_argument('--mode', choices=['heat', 'pressure'], default='heat',
                         help="Optimization mode: 'heat' minimize meanT (default), "
@@ -1974,6 +1981,7 @@ def main() -> None:
         am_theta_max    = math.radians(args.am_theta),
         am_P_bar        = args.am_P_bar,
         am_mu_overhang  = args.mu_overhang,
+        am_L_bridge_mm  = args.am_L_bridge,
         use_overhang    = not args.no_overhang,
         mode             = args.mode,
         target_meanT    = args.meantT_max,
