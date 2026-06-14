@@ -248,6 +248,25 @@ def export_overhang_mesh(part: Part, overhang_angle: float, out_path: Path | Non
 
 # ── Stage 2: bridge-length-filtered support generation ──────────────────────
 
+def _drop_nonwatertight_bodies(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    """Strip non-watertight connected components from `mesh`.
+
+    A handful of stray single-triangle fragments left over from mesh
+    generation can make an otherwise-solid mesh non-watertight overall.
+    trimesh's 'manifold' boolean engine then silently returns an *empty*
+    mesh for any intersection/difference involving it (no exception), so
+    such fragments must be removed before using the mesh as a boolean
+    operand.
+    """
+    bodies = mesh.split(only_watertight=False)
+    watertight = [b for b in bodies if b.is_watertight]
+    if not watertight or len(watertight) == len(bodies):
+        return mesh
+    print(f"  Dropping {len(bodies) - len(watertight)} non-watertight mesh fragment(s) "
+          f"before boolean diff")
+    return trimesh.util.concatenate(watertight)
+
+
 def generate_bridge_supports(part: Part, overhang: trimesh.Trimesh, max_bridge_length: float,
                               support_inset: float, support_gap: float, min_support_area: float,
                               remove_part_overlap: bool, max_supports: int) -> trimesh.Trimesh | None:
@@ -273,13 +292,17 @@ def generate_bridge_supports(part: Part, overhang: trimesh.Trimesh, max_bridge_l
             n_failed += 1
             continue
 
-        if poly.is_empty or poly.area < min_support_area:
+        if poly.is_empty:
             n_too_small += 1
             continue
 
         span = _polygon_span(poly)
         if span <= max_bridge_length:
             n_bridging += 1
+            continue
+
+        if poly.area < min_support_area:
+            n_too_small += 1
             continue
 
         footprint = poly.buffer(-support_inset) if support_inset > 0 else poly
@@ -319,7 +342,8 @@ def generate_bridge_supports(part: Part, overhang: trimesh.Trimesh, max_bridge_l
     if remove_part_overlap:
         print("  Removing overlap with part geometry (manifold boolean diff) ...")
         try:
-            support_mesh = trimesh.boolean.difference([support_mesh, part.geometry],
+            clean_part = _drop_nonwatertight_bodies(part.geometry)
+            support_mesh = trimesh.boolean.difference([support_mesh, clean_part],
                                                         engine='manifold', check_volume=False)
             print(f"  Supports after diff: {len(support_mesh.faces):,} faces")
         except Exception as exc:
@@ -535,7 +559,7 @@ def main() -> None:
                         help='Shrink each support footprint inward by this much (mm)')
     parser.add_argument('--support-gap', type=float, default=0.1,
                         help='Gap (mm) left between the top of a support and the downskin surface')
-    parser.add_argument('--min-support-area', type=float, default=1.5,
+    parser.add_argument('--min-support-area', type=float, default=10,
                         help='Ignore downskin islands with a flattened area below this (mm^2)')
     parser.add_argument('--no-remove-part-overlap', dest='remove_part_overlap', action='store_false',
                         help='Skip the boolean diff that carves supports out of solid part material')

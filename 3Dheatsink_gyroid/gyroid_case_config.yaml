@@ -4,20 +4,20 @@ run:
   parallel: 10
   postprocess: postProcess
   skip_clean: false
-  iters: 100
+  iters: 190
 geometry:
   origin_mm:
   - 0.0
   - 0.0
   - 0.0
   size_mm:
-  - 250.0
-  - 250.0
-  - 300.0
+  - 15.0
+  - 15.0
+  - 20.0
   cells:
-  - 75
-  - 75
-  - 90
+  - 110
+  - 110
+  - 146
   flow_axis: z
   encap_wall_mm: 3
   encap_open_faces:
@@ -26,21 +26,21 @@ geometry:
 inlet:
   face: min
   window_origin_mm:
-  - 10.0
-  - 10.0
+  - 1.0
+  - 1.0
   window_size_mm:
-  - 10.0
-  - 15.0
-  velocity_magnitude: 2
+  - 1.0
+  - 1.5
+  velocity_magnitude: 0.1
   temperature: 380.0
 outlet:
   face: max
   window_origin_mm:
-  - 220.0
-  - 220.0
+  - 12.0
+  - 12.0
   window_size_mm:
-  - 10.0
-  - 15.0
+  - 1.0
+  - 1.5
   pressure: 0.0
 material:
   nu: 1.0e-06
@@ -65,7 +65,7 @@ material:
   rhoc: 4180000.0
   t_alpha: 2.0e-05
   solid_density_g_per_mm3: 0.0027
-  darcy_number: 3.0e-09
+  darcy_number: 1.0e-9
   rho_fluid: 1000.0
   hconv: 1000.0
   Texterior: 270.0
@@ -78,19 +78,20 @@ turbulence:
   print_coeffs: false
 optimization:
   method: MMA
-  unit: 75
-  wall: 6
-  epsilon: 2.0
-  spacing: 100.0
-  bake_spacing: 20.0
-  kbound: 0.08
+  unit: 1.8
+  wall: 0.2
+  epsilon: 0.2
+  spacing: 7.0
+  bake_spacing: 1.4
+  kbound: 3.4
   mode: pressure
-  meantT_max: 340
-  dissPower_max: 2800000.0
+  meantT_max: 303
+  dissPower_max: 9800.0
   mu_penalty: 10000.0
   am_theta: 45.0
   am_P_bar: 0.01
   mu_overhang: 8100.0
+  am_L_bridge: 1.5   # LPBF self-supporting bridge length (mm); erosion radius = L_bridge/2
   build_direction:
   - 1
   - 1
