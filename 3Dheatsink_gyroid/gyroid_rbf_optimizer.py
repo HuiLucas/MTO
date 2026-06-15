@@ -355,7 +355,7 @@ def gyroid_sdf_batch(pts_mm:         np.ndarray,
     Vectorised Gyroid SDF at an array of points.
 
     Standard (rot_matrix is None):
-        G = sin(kx·x)cos(ky·y) + sin(ky·y)cos(kz·z) + sin(kz·z)cos(kx·x)
+        G = cos(kx·x)cos(ky·y) + sin(ky·y)cos(kz·z) - sin(kz·z)sin(kx·x)
 
     Rotated / flow-aligned (rot_matrix = R):
         [u,v,w] = R @ [kx·x, ky·y, kz·z]
