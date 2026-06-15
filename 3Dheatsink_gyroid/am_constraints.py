@@ -161,7 +161,7 @@ def _gyroid_geometry(
         dGz_dky = kz * y * M21
         dGz_dkz = Az + kz * z * M22
 
-    else:
+    else: #old
         sx = np.sin(kx*x); cx = np.cos(kx*x)
         sy = np.sin(ky*y); cy = np.cos(ky*y)
         sz = np.sin(kz*z); cz = np.cos(kz*z)

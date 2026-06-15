@@ -463,7 +463,7 @@ def estimate_build_time(part: Part, layer_thickness: float, hatch_distance: floa
                 if (i + 1) % 50 == 0 or (i + 1) == len(tasks):
                     elapsed = time.time() - t0
                     print(f"    ... {i + 1:,}/{len(tasks):,} sampled layers ({elapsed:.1f}s elapsed)", end='\r')
-    else:
+    else: #OLD:
         bstyle = BuildStyle()
         bstyle.bid = model_params['bid']
         bstyle.laserSpeed = model_params['laser_speed']
