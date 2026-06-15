@@ -217,32 +217,49 @@ def _gyroid_geometry(
 # ── Smooth morphological erosion (bridging length) ───────────────────────────
 #
 # LPBF printers can self-support ("bridge") unsupported spans up to a length
-# L_bridge.  Small islands of overhang-violating surface (smaller than the
+# L_bridge.  Small islands of overhang-violating *surface* (smaller than the
 # bridge length) are therefore manufacturable for free and should not be
-# penalised; only large connected violating regions matter.
+# penalised; only large connected violating surface regions matter.
 #
-# This is modelled as a smooth morphological erosion of the per-cell
-# violation field `viol` by radius r = L_bridge/2:
+# `viol = max(0, -cos_max - n_b)` is a property of the gyroid level-set's
+# gradient *direction*, defined (and roughly periodic) everywhere in 3D space
+# — not just on the printed G≈0 surface.  Averaging it unweighted over a voxel
+# mixes in the surrounding bulk volume, whose gradient-direction statistics
+# are an almost scale-invariant geometric constant unrelated to the printed
+# surface's bridgeability.  To erode the *surface's* overhang pattern, the
+# per-voxel statistics are restricted to the interface using the band weight
+# w = gamma*(1-gamma)/epsilon (large only near G≈0, ~0 in the bulk):
 #
-#   1. Bin cell centres into a uniform auxiliary voxel grid of pitch r
-#      (independent of the unstructured / graded FOAM mesh).
-#   2. Average `viol` over the cells in each voxel  ->  vbar.
-#   3. Erode vbar with a soft-min (LogSumExp, sharpness 1/bridge_eps) over the
-#      3x3x3-voxel neighbourhood — a cube of side 2r = L_bridge, approximating
-#      a ball of radius r.
+#   1. Bin cell centres into a uniform auxiliary voxel grid of pitch
+#      r = L_bridge/2 (independent of the unstructured / graded FOAM mesh).
+#   2. Per voxel v: vbar_v = sum(w_i*viol_i) / sum(w_i)  — the local,
+#      interface-weighted average violation; omega_v = sum(w_i) is the
+#      voxel's interface "mass".
+#   3. Erode vbar with an omega-weighted soft-min (LogSumExp, sharpness
+#      1/bridge_eps) over the 3x3x3-voxel neighbourhood (box-filter,
+#      separable). Voxels with omega≈0 (no surface nearby) contribute ~0 to
+#      both the numerator and denominator of the soft-min ratio — they are
+#      excluded, not treated as "clean" — so a thin printed shell is not
+#      spuriously eroded just because it is thin through-thickness.
 #   4. Gather the eroded value back to each cell  ->  m.
 #
-# An island survives erosion only if its core (more than ~r from its edge) is
-# itself fully violating; sub-bridge islands erode to ~0.  `m` then replaces
-# `viol` everywhere (pen = w*m**2, g_oh = sum(w*m)/sum(w)).
+# A surface island survives erosion only if its core (more than ~r from its
+# edge) is itself fully violating; sub-bridge islands erode to ~0.  `m` then
+# replaces `viol` everywhere (pen = w*m**2, g_oh = sum(w*m)/sum(w)).
 #
-# `_erode_violation_field` returns `m` together with a `redistribute`
-# callable implementing the (neighbourhood-local, soft-max-weighted) gradient
-# operator dm_i/dviol_j, so that
-#     d(sum_i w_i*m_i**2)/dviol_j = redistribute(2*m*w)[j]
-#     d(sum_i w_i*m_i)    /dviol_j = redistribute(w)[j]
-# `r_bridge<=0` disables erosion (`m=viol`, `redistribute` is the identity),
-# exactly recovering the un-eroded penalty.
+# Both vbar_v and omega_v depend on dk_ctrl (via viol_i(k) and w_i(k)), so
+# dm_i/dk has two channels: through dn_b,i/dk (via viol) and through
+# dw_dk_i (via w). `_erode_violation_field` returns `m` together with a
+# `redistribute` callable
+#     R_nb, R_w = redistribute(Q)
+# implementing the analytic gradient operator
+#     sum_i Q_i*dm_i/dk = sum_i (R_nb[i]*dn_b,i/dk + R_w[i]*dw_dk_i)
+# so that, for any per-cell array Q,
+#     d(sum_i w_i*m_i**2)/dk  uses Q = 2*m*w
+#     d(sum_i w_i*m_i)   /dk  uses Q = w
+# `r_bridge<=0` disables erosion (`m=viol`,
+# `redistribute(Q) = (-Q*H_viol, 0)`), exactly recovering the un-eroded
+# penalty (dm_i/dk = dviol_i/dk = -H_viol_i*dn_b,i/dk).
 
 
 def _voxel_grid_index(pts_mm: np.ndarray, voxel_size: float) -> tuple[np.ndarray, np.ndarray, int]:
@@ -284,46 +301,65 @@ def _erode_violation_field(
     w:          np.ndarray,  # (N,)  interface weight
     r_bridge:   float,       # erosion radius (mm), = L_bridge / 2
     bridge_eps: float,       # soft-min sharpness scale (violation units)
-) -> tuple[np.ndarray, Callable[[np.ndarray], np.ndarray]]:
-    """Smooth morphological erosion of `viol` by radius `r_bridge`.
+) -> tuple[np.ndarray, Callable[[np.ndarray], tuple[np.ndarray, np.ndarray]]]:
+    """Smooth, interface-weighted morphological erosion of `viol` by radius
+    `r_bridge`.
 
     Returns (m, redistribute) — see module section docstring above.
     """
+    H_viol = (viol > 0.0).astype(float)
+
     if r_bridge <= 0.0:
-        return viol, (lambda Q: Q)
+        zeros = np.zeros_like(viol)
+
+        def redistribute(Q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            return -Q * H_viol, zeros
+
+        return viol, redistribute
+
+    TINY = 1e-300
 
     vox_idx, grid_shape, n_vox = _voxel_grid_index(pts_mm, r_bridge)
+    # vox_idx = idx_x + gx*(idx_y + gy*idx_z) is the C-order flat index of an
+    # array shaped (gz, gy, gx) — reverse grid_shape (which is (gx,gy,gz))
+    # before reshape so that .reshape(...).ravel() round-trips through
+    # vox_idx correctly (matters whenever gx != gz).
+    grid_shape_zyx = tuple(grid_shape[::-1])
 
-    count    = np.bincount(vox_idx, minlength=n_vox).astype(float)
-    sum_viol = np.bincount(vox_idx, weights=viol, minlength=n_vox)
-    occ  = count > 0
-    vbar = np.zeros(n_vox)
-    vbar[occ] = sum_viol[occ] / count[occ]
+    sum_w     = np.bincount(vox_idx, weights=w,        minlength=n_vox)
+    sum_wviol = np.bincount(vox_idx, weights=w * viol, minlength=n_vox)
+    vbar = sum_wviol / (sum_w + TINY)
 
     beta = 1.0 / bridge_eps
-    m0 = float(vbar[occ].min())
-    E = np.zeros(n_vox)
-    E[occ] = np.exp(-beta * (vbar[occ] - m0))
+    E = np.exp(-beta * vbar)
 
-    occ_grid = occ.astype(float).reshape(grid_shape)
-    E_grid   = E.reshape(grid_shape)
-    S = _box_filter_3x3x3(E_grid * occ_grid).ravel()
-    C = _box_filter_3x3x3(occ_grid).ravel()
+    omega_grid = sum_w.reshape(grid_shape_zyx)
+    E_grid     = E.reshape(grid_shape_zyx)
+    S = _box_filter_3x3x3(E_grid * omega_grid).ravel()
+    C = _box_filter_3x3x3(omega_grid).ravel()
 
-    # For occupied voxels the 3x3x3 neighbourhood always includes the voxel
-    # itself, so C > 0 and S >= E > 0 there.
-    m_vox = np.full(n_vox, m0)
-    m_vox[occ] = m0 - (1.0 / beta) * np.log(S[occ] / C[occ])
+    ratio = np.where(C > TINY, S / np.maximum(C, TINY), 1.0)
+    m_vox = -(1.0 / beta) * np.log(ratio)
     m = m_vox[vox_idx]
 
-    inv_S = np.where(S > 0.0, 1.0 / S, 0.0)
-    E_over_count = np.zeros(n_vox)
-    E_over_count[occ] = E[occ] / count[occ]
+    inv_S = np.where(S > TINY, 1.0 / S, 0.0)
+    inv_C = np.where(C > TINY, 1.0 / C, 0.0)
 
-    def redistribute(Q: np.ndarray) -> np.ndarray:
+    def redistribute(Q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         Qv = np.bincount(vox_idx, weights=Q, minlength=n_vox)
-        T  = _box_filter_3x3x3((Qv * inv_S).reshape(grid_shape)).ravel()
-        return E_over_count[vox_idx] * T[vox_idx]
+        T  = _box_filter_3x3x3((Qv * inv_S).reshape(grid_shape_zyx)).ravel()
+        U  = _box_filter_3x3x3((Qv * inv_C).reshape(grid_shape_zyx)).ravel()
+
+        alpha = E * T
+        gamma_ = (1.0 / beta) * (alpha - U)
+
+        alpha_i = alpha[vox_idx]
+        gamma_i = gamma_[vox_idx]
+        vbar_i  = vbar[vox_idx]
+
+        R_nb = -alpha_i * w * H_viol
+        R_w  = alpha_i * (viol - vbar_i) - gamma_i
+        return R_nb, R_w
 
     return m, redistribute
 
@@ -344,6 +380,7 @@ def compute_gyroid_overhang(
     eps_reg: float = 1e-6,
     r_bridge:   float = 0.75,  # bridging-length erosion radius (mm) = L_bridge/2
     bridge_eps: float = 0.02,  # erosion soft-min sharpness (violation units)
+    p_agg:      float = 2.0,   # Lp-norm exponent for J_oh's voxel aggregation (>=2)
 ) -> tuple[float, np.ndarray, dict]:
     """
     Analytic gyroid overhang penalty and gradient.
@@ -353,6 +390,18 @@ def compute_gyroid_overhang(
     `_erode_violation_field`) so that islands of violation smaller than the
     LPBF bridge length (`2*r_bridge`) contribute ~0 penalty.  `r_bridge<=0`
     disables this and recovers the original per-cell penalty exactly.
+
+    J_oh aggregates the eroded per-voxel violation `m_vox` (broadcast to
+    cells as `m`) via an interface-weighted Lp-norm:
+        S_p  = sum_i w_i * m_i**p_agg
+        J_oh = (mu_oh/N) * S_p**(2/p_agg)
+    `p_agg=2` (default) reproduces the original mean-of-squares penalty
+    exactly. `p_agg>2` makes J_oh increasingly dominated by the worst
+    (largest-m_vox) voxels, up to J_oh -> (mu_oh/N)*max(m_vox)**2 as
+    p_agg -> inf — so a single severe, unbridgeable hotspot can no longer be
+    averaged away by improvements elsewhere. `g_oh` (below, and the value
+    returned by `compute_gyroid_overhang_raw`) remains the plain
+    interface-weighted mean.
 
     Returns
     -------
@@ -372,12 +421,15 @@ def compute_gyroid_overhang(
 
     viol = np.maximum(0.0, -cos_max - n_b)
     w    = geo['w']
-    H_viol = (viol > 0.0).astype(float)
 
     m, redistribute = _erode_violation_field(pts_mm, viol, w, r_bridge, bridge_eps)
 
-    pen_j = w * m**2
-    J_oh  = mu_oh / N * float(np.sum(pen_j))
+    TINY = 1e-300
+    m_nn = np.maximum(m, 0.0)   # guard against ~0 negative FP noise (m_vox >= 0 analytically)
+    m_p  = m_nn ** p_agg
+    S_p  = float(np.sum(w * m_p))
+    S_p_safe = max(S_p, TINY)
+    J_oh = mu_oh / N * S_p_safe ** (2.0 / p_agg)
 
     w_sum = float(np.sum(w)) + 1e-30
     g_oh  = float(np.sum(w * m)) / w_sum
@@ -401,11 +453,12 @@ def compute_gyroid_overhang(
     dnb_dkz = sG * dBG_dkz * inv_ng - n_b * dng_dkz * inv_ng
 
     dw_dkx = geo['dw_dkx']; dw_dky = geo['dw_dky']; dw_dkz = geo['dw_dkz']
-    c = mu_oh / N
-    A = redistribute(2.0 * m * w)   # d(sum_i w_i*m_i**2)/dviol_j, per cell j
-    sk_x = c * (m**2 * dw_dkx - H_viol * A * dnb_dkx)
-    sk_y = c * (m**2 * dw_dky - H_viol * A * dnb_dky)
-    sk_z = c * (m**2 * dw_dkz - H_viol * A * dnb_dkz)
+    c_p = (mu_oh / N) * (2.0 / p_agg) * S_p_safe ** (2.0 / p_agg - 1.0)
+    Q = p_agg * m_nn ** (p_agg - 1.0) * w   # d(sum_i w_i*m_i**p_agg)/dm_i, per cell
+    R_nb, R_w = redistribute(Q)
+    sk_x = c_p * ((m_p + R_w) * dw_dkx + R_nb * dnb_dkx)
+    sk_y = c_p * ((m_p + R_w) * dw_dky + R_nb * dnb_dky)
+    sk_z = c_p * ((m_p + R_w) * dw_dkz + R_nb * dnb_dkz)
 
     grad_ctrl = np.stack([W.T @ sk_x, W.T @ sk_y, W.T @ sk_z], axis=1)
 
@@ -437,9 +490,8 @@ def compute_gyroid_overhang_raw(
     b_dot_gradG = bx*Gx + by*Gy + bz*Gz
     n_b = sG * b_dot_gradG * inv_ng
 
-    viol   = np.maximum(0.0, -cos_max - n_b)
-    H_viol = (viol > 0.0).astype(float)
-    w      = geo['w']
+    viol = np.maximum(0.0, -cos_max - n_b)
+    w    = geo['w']
 
     m, redistribute = _erode_violation_field(pts_mm, viol, w, r_bridge, bridge_eps)
 
@@ -461,10 +513,10 @@ def compute_gyroid_overhang_raw(
 
     dw_dkx = geo['dw_dkx']; dw_dky = geo['dw_dky']; dw_dkz = geo['dw_dkz']
     c = 1.0 / w_sum
-    B = redistribute(w)   # d(sum_i w_i*m_i)/dviol_j, per cell j
-    sk_x = c * ((m - g_oh) * dw_dkx - H_viol * B * dnb_dkx)
-    sk_y = c * ((m - g_oh) * dw_dky - H_viol * B * dnb_dky)
-    sk_z = c * ((m - g_oh) * dw_dkz - H_viol * B * dnb_dkz)
+    R_nb, R_w = redistribute(w)   # d(sum_i w_i*m_i)/dk channels
+    sk_x = c * ((m - g_oh + R_w) * dw_dkx + R_nb * dnb_dkx)
+    sk_y = c * ((m - g_oh + R_w) * dw_dky + R_nb * dnb_dky)
+    sk_z = c * ((m - g_oh + R_w) * dw_dkz + R_nb * dnb_dkz)
 
     grad_ctrl = np.stack([W.T @ sk_x, W.T @ sk_y, W.T @ sk_z], axis=1)
 
@@ -484,6 +536,7 @@ class AMConstraints:
         use_overhang:    bool               = True,
         L_bridge_mm:     float              = 1.5,
         bridge_eps:      float              = 0.02,
+        p_agg:           float              = 2.0,
     ):
         self.cos_max      = math.cos(theta_max)
         self.b_vec        = (np.array([0.0, 0.0, 1.0], dtype=float)
@@ -499,8 +552,9 @@ class AMConstraints:
         self.bridge_eps   = bridge_eps
         self.r_bridge     = L_bridge_mm / 2.0
         self.use_overhang = use_overhang
+        self.p_agg        = p_agg
 
     def update_penalties(self, info: dict, violation_tol: float = 1e-4) -> None:
         """Increase mu_oh if overhang violation exceeds P_bar."""
         if self.use_overhang and info.get('g_oh', 0.0) > self.P_bar + violation_tol:
-            self.mu_oh = min(self.mu_oh * 1.2, 1e6)
+            self.mu_oh = min(self.mu_oh * 1.2, 1e9)

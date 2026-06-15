@@ -852,6 +852,7 @@ class GyroidRBFOptimizer:
         am_P_bar:        float = 0.01,
         am_mu_overhang:  float = 1.0,
         am_L_bridge_mm:  float = 1.5,
+        am_overhang_p:   float = 2.0,
         use_overhang:    bool  = True,
         # ── Optimisation mode ─────────────────────────────────────────────────
         mode:              str   = 'heat',   # 'heat' or 'pressure'
@@ -992,6 +993,7 @@ class GyroidRBFOptimizer:
                 mu_overhang  = am_mu_overhang,
                 use_overhang = use_overhang,
                 L_bridge_mm  = am_L_bridge_mm,
+                p_agg        = am_overhang_p,
                 build_direction = None if am_build_direction is None else np.asarray(am_build_direction, dtype=float)
             )
         else:
@@ -1238,6 +1240,7 @@ class GyroidRBFOptimizer:
                 self.epsilon, self.am.cos_max, self.am.b_vec,
                 self.am.mu_oh, self.W, self.rot_matrix,
                 r_bridge=self.am.r_bridge, bridge_eps=self.am.bridge_eps,
+                p_agg=self.am.p_agg,
             )
             J_aug += J_oh
             print(f"  g_overhang = {am_info['g_oh']:.4g}  "
@@ -1943,6 +1946,10 @@ def main() -> None:
     parser.add_argument('--am-L-bridge',  type=float, default=1.5,
                         help='LPBF self-supporting bridge length in mm; '
                              'erosion radius = L_bridge/2 (default: 1.5)')
+    parser.add_argument('--am-overhang-p', type=float, default=2.0,
+                        help='Lp-norm exponent for the overhang penalty\'s voxel '
+                             'aggregation; >2 makes worst-voxel hotspots dominate '
+                             '(default: 2.0 = mean-of-squares)')
     # ── Optimization mode (thermal vs. pressure-based) ────────────────────────
     parser.add_argument('--mode', choices=['heat', 'pressure'], default='heat',
                         help="Optimization mode: 'heat' minimize meanT (default), "
@@ -1982,6 +1989,7 @@ def main() -> None:
         am_P_bar        = args.am_P_bar,
         am_mu_overhang  = args.mu_overhang,
         am_L_bridge_mm  = args.am_L_bridge,
+        am_overhang_p   = args.am_overhang_p,
         use_overhang    = not args.no_overhang,
         mode             = args.mode,
         target_meanT    = args.meantT_max,

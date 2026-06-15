@@ -4,7 +4,7 @@ run:
   parallel: 10
   postprocess: postProcess
   skip_clean: false
-  iters: 190
+  iters: 100
 geometry:
   origin_mm:
   - 0.0
@@ -90,8 +90,9 @@ optimization:
   mu_penalty: 10000.0
   am_theta: 45.0
   am_P_bar: 0.01
-  mu_overhang: 8100.0
+  mu_overhang: 8.1e7   # scaled up ~1e4x from the old mean-of-squares value to compensate for m_vox^p_agg shrinkage at am_overhang_p=6
   am_L_bridge: 1.5   # LPBF self-supporting bridge length (mm); erosion radius = L_bridge/2
+  am_overhang_p: 6.0   # Lp-norm exponent for overhang penalty's voxel aggregation (2 = mean-of-squares; >2 = worst-voxel hotspots dominate)
   build_direction:
   - 1
   - 1

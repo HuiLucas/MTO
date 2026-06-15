@@ -14,46 +14,46 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-7
+8
 (
     inlet
     {
         type            patch;
-        nFaces          20;
-        startFace       145059;
+        nFaces          96;
+        startFace       522347;
     }
     outlet
     {
         type            patch;
         nFaces          0;
-        startFace       145079;
+        startFace       522443;
     }
     wall
     {
         type            wall;
         inGroups        List<word> 1(wall);
-        nFaces          4087;
-        startFace       145079;
+        nFaces          9199;
+        startFace       522443;
     }
     force
     {
         type            patch;
         nFaces          0;
-        startFace       149166;
+        startFace       531642;
     }
     sym
     {
         type            symmetry;
         inGroups        List<word> 1(symmetry);
-        nFaces          1350;
-        startFace       149166;
+        nFaces          3257;
+        startFace       531642;
     }
     procBoundary0to1
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          1350;
-        startFace       150516;
+        nFaces          3205;
+        startFace       534899;
         matchTolerance  0.0001;
         myProcNo        0;
         neighbProcNo    1;
@@ -62,11 +62,21 @@ FoamFile
     {
         type            processor;
         inGroups        List<word> 1(processor);
-        nFaces          2775;
-        startFace       151866;
+        nFaces          6156;
+        startFace       538104;
         matchTolerance  0.0001;
         myProcNo        0;
         neighbProcNo    2;
+    }
+    procBoundary0to3
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          1;
+        startFace       544260;
+        matchTolerance  0.0001;
+        myProcNo        0;
+        neighbProcNo    3;
     }
 )
 
